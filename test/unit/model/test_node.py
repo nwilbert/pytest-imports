@@ -80,7 +80,7 @@ def test_node_add_imports():
     assert len(node.imports) == 0
     node.add_imports(imports)
     assert len(node.imports) == 2
-    assert {str(import_of.import_path) for import_of in node.imports} == {
+    assert {str(import_of.dot_path) for import_of in node.imports} == {
         'a',
         'b',
     }

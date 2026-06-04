@@ -32,7 +32,7 @@ def _collect_imports(
                 for alias in ast_import.names:
                     imports.append(
                         ImportInModule(
-                            import_path=DotPath(alias.name),
+                            dot_path=DotPath(alias.name),
                             line_no=alias.lineno,
                         )
                     )
@@ -54,7 +54,7 @@ def _collect_imports(
                     from_path /= alias.name
                     imports.append(
                         ImportInModule(
-                            import_path=from_path,
+                            dot_path=from_path,
                             line_no=alias.lineno,
                             level=ast_import_from.level,
                         )

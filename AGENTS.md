@@ -4,6 +4,19 @@ This file provides guidance to AI agents working with code in this repository.
 
 See README.md for the full API reference and usage examples.
 
+## Terminology
+
+This project maintains a ubiquitous language in [GLOSSARY.md](GLOSSARY.md).
+Use those terms — `module`, `package`, `submodule`, `subpackage`,
+`descendant`, `scope`, `predicate`, etc. — consistently in code,
+docstrings, error messages, specs, and PR descriptions. In particular,
+treat `submodule` (a `.py` file in a package) and `subpackage` (a nested
+package) as distinct, and use `descendant` as the umbrella term when the
+distinction does not matter.
+
+When you introduce a new domain term in code or docs, add it to
+`GLOSSARY.md` in the same change.
+
 ## Commands
 
 ```bash

@@ -17,8 +17,9 @@ def test_imports(imports):
 ```
 This checks that module `foo` imports `bar`, and that module `baz` does not import `qux`.
 
-Both `must_import` and `must_not_import` are inclusive with regards to substructures
-(i.e., if there is an import of `foo.foo2` in a subpackage `bar.bar2` then the rule is satisfied).
+Both `must_import` and `must_not_import` are inclusive with regards to descendants
+(i.e., if there is an import of `foo.foo2` in a descendant `bar.bar2` then the rule is satisfied).
+See [Terminology](#terminology) for what we mean by *descendant*, *submodule*, and *subpackage*.
 
 ### Installation & use
 
@@ -27,7 +28,7 @@ Install `pytest-imports` via the Python package manager of your choice (e.g., pi
 If your project structure is "normal" then you can simply start using the `imports` fixture in your tests right away, as seen above.
 
 ### Complex examples
-Import paths are always specified as fully qualified absolute paths (using `.` as separator).
+Dot paths in rules are always specified as fully qualified absolute paths (using `.` as separator). See [Terminology](#terminology) and [GLOSSARY.md](GLOSSARY.md) for the project's vocabulary.
 
 ```python
 from pytest_imports import must_import, must_not_import, scope
@@ -38,7 +39,7 @@ def test_layered_architecture(imports):
         'myapp.api':                   must_import('myapp.core'),
     })
 ```
-`scope('myapp', without='api')` covers all of `myapp` except the `myapp.api` subpackage. Pass a list to exclude multiple subpackages: `without=['api', 'adapters']`.
+`scope('myapp', without='api')` covers all of `myapp` except `myapp.api` and its descendants. Pass a list to exclude multiple paths: `without=['api', 'adapters']`.
 
 ```python
 def test_no_relative_imports_in_public_api(imports):
@@ -67,7 +68,7 @@ def test_no_private_imports(imports):
         project(): must_not_import_private(),
     })
 ```
-`must_not_import_private()` checks that no module imports a private symbol — any name starting with `_` or `__`, except the standard `__future__` module. `project()` is a special scope covering all modules in the project, useful for rules that apply globally. You can restrict to a specific package with `must_not_import_private('myapp')`.
+`must_not_import_private()` checks that no module imports a private symbol — any name starting with `_` or `__`, except the standard `__future__` module. `project()` is a special scope covering all modules under the configured source root — see [Configuration](#configuration) for which paths that includes (notably, with a `src/` layout `project()` does *not* include test folders, but with a flat layout it does). You can restrict to a specific package with `must_not_import_private('myapp')`.
 
 ```python
 from pytest_imports import must_not_import_within_parent, project
@@ -82,6 +83,22 @@ def test_intra_package_imports_are_relative(imports):
 Note: This is similar to ruff's [TID252 (relative-imports)](https://docs.astral.sh/ruff/rules/relative-imports/#relative-imports-tid252) rule, but works in the opposite direction — TID252 bans relative imports in favor of absolute ones, while `must_not_import_within_parent(via='absolute')` bans absolute intra-package imports in favor of relative ones.
 
 ## Details
+
+### Terminology
+
+This project keeps a deliberate, consistent vocabulary — see
+[GLOSSARY.md](GLOSSARY.md) for the full list. The most important
+distinctions:
+
+- **submodule** of `X` — a module that is a direct child of package `X`;
+  both `.py` files and subpackages qualify.
+- **subpackage** of `X` — a submodule of `X` that is itself a package.
+  Every subpackage is a submodule.
+- **descendant** of `X` — a module nested under `X` at *any* depth.
+  `a.b.c` is a descendant of `a` but only a submodule of `a.b`.
+
+Rules like `must_import('a.b')` and `must_not_import('a.b')` apply to
+`a.b` and all its descendants.
 
 ### How it works
 
@@ -99,7 +116,7 @@ you will *not* be able to check that `a.b` is used (e.g., via `must_import('a.b'
 
 ### Absolute vs. relative imports
 
-Import paths in rules are always specified as fully qualified absolute paths, regardless of whether relative imports are used in the source. You can optionally use the `via` argument to distinguish between absolute and relative imports.
+Dot paths in rules are always specified as fully qualified absolute paths, regardless of whether relative imports are used in the source. You can optionally use the `via` argument to distinguish between absolute and relative imports.
 
 Note that relative imports from outside the configured project source directory are not supported (because we can't normalize those).
 
@@ -109,9 +126,16 @@ Both imports from inside your project and from external packages (standard libra
 
 ### Configuration
 
-This plugin uses a simple heuristic to determine the source root of your project. You can check the source root via the `imports_project_paths` fixture in a test.
+This plugin uses a simple heuristic to determine the source root of your project:
 
-Alternatively you can specify the source root in the pytest configuration. If you use a `pyproject.toml` then this looks like:
+1. If `imports_project_paths` is set in the pytest config, use that.
+2. Otherwise, walk up from pytest's rootpath looking for `pyproject.toml`, `setup.cfg`, or `setup.py`.
+3. If a `src/` directory exists next to that config file, use `src/` — this excludes a sibling `test/` or `tests/` directory from the model, so `project()` covers source code only.
+4. Otherwise fall back to the directory containing the config file — which in a flat layout typically *includes* `test/` or `tests/` in the model, and therefore in `project()`.
+
+You can check the resolved source root via the `imports_project_paths` fixture in a test. If the auto-detected scope is not what you want — for example, you have a flat layout but want to exclude tests, or your project uses `src/` but you also want to apply rules to `test/` — set `imports_project_paths` explicitly, or use a narrower scope such as `scope('myapp')` instead of `project()`.
+
+To specify the source root in the pytest configuration, if you use a `pyproject.toml` then this looks like:
 ```
 [tool.pytest.ini_options]
     imports_project_paths = [

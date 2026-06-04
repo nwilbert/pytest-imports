@@ -124,9 +124,9 @@ def _evaluate_predicate(
 ) -> None:
     match predicate:
         case MustImport():
-            import_path = DotPath(predicate.path)
+            target_path = DotPath(predicate.path)
             if not any(
-                _find_matching_imports(node, exclude, import_path, predicate.via)
+                _find_matching_imports(node, exclude, target_path, predicate.via)
             ):
                 for module_node in node.walk(exclude=exclude):
                     if module_node.file_path.suffix == '.py':
@@ -135,9 +135,9 @@ def _evaluate_predicate(
                             f' — no matching import in {module_node.file_path}'
                         )
         case MustNotImport():
-            import_path = DotPath(predicate.path)
+            target_path = DotPath(predicate.path)
             for module_node, import_by in _find_matching_imports(
-                node, exclude, import_path, predicate.via
+                node, exclude, target_path, predicate.via
             ):
                 failures.append(
                     f'  [scope {scope_label}] must not import {predicate.path}'
@@ -166,13 +166,13 @@ def _evaluate_predicate(
 def _find_matching_imports(
     base_node: ModuleNode,
     exclude: list[DotPath],
-    import_path: DotPath,
+    target_path: DotPath,
     via: Via | None,
 ) -> Iterator[tuple[ModuleNode, ImportInModule]]:
     absolute = _via_to_absolute(via)
     for module_node in base_node.walk(exclude=exclude):
         for import_by in module_node.imports:
-            if import_by.import_path.is_relative_to(import_path) and (
+            if import_by.dot_path.is_relative_to(target_path) and (
                 absolute is None or absolute != bool(import_by.level)
             ):
                 yield module_node, import_by
@@ -189,7 +189,7 @@ def _find_within_parent_imports(
         if not parent.parts:
             continue  # top-level modules have no parent package to check
         for import_by in module_node.imports:
-            if import_by.import_path.is_relative_to(parent) and absolute != bool(
+            if import_by.dot_path.is_relative_to(parent) and absolute != bool(
                 import_by.level
             ):
                 yield module_node, import_by
@@ -203,9 +203,9 @@ def _find_matching_private_imports(
     filter_path = DotPath(path) if path else None
     for module_node in base_node.walk(exclude=exclude):
         for import_by in module_node.imports:
-            if filter_path and not import_by.import_path.is_relative_to(filter_path):
+            if filter_path and not import_by.dot_path.is_relative_to(filter_path):
                 continue
-            if any(_is_private_name(p) for p in import_by.import_path.parts):
+            if any(_is_private_name(p) for p in import_by.dot_path.parts):
                 yield module_node, import_by
 
 

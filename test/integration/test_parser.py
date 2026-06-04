@@ -33,17 +33,17 @@ def project_path(project_structure: dict[str, str | dict], tmp_path: Path) -> Pa
                 'a': {'b.py': 'from .. import y'},
             },
             'a.b',
-            ImportInModule(import_path=DotPath('y'), line_no=1, level=2),
+            ImportInModule(dot_path=DotPath('y'), line_no=1, level=2),
         ),
         (
             {'a': {'b': {'c.py': '...\nfrom .. import y'}}},
             'a.b.c',
-            ImportInModule(import_path=DotPath('a.y'), line_no=2, level=2),
+            ImportInModule(dot_path=DotPath('a.y'), line_no=2, level=2),
         ),
         (
             {'a': {'b.py': '...\n\nfrom .x import y'}},
             'a.b',
-            ImportInModule(import_path=DotPath('a.x.y'), line_no=3, level=1),
+            ImportInModule(dot_path=DotPath('a.x.y'), line_no=3, level=1),
         ),
     ],
 )
@@ -91,12 +91,12 @@ def test_import_from_init(project_path):
                 'a': {'b.py': 'import x'},
             },
             'a.b',
-            ImportInModule(import_path=DotPath('x'), line_no=1),
+            ImportInModule(dot_path=DotPath('x'), line_no=1),
         ),
         (
             {'a': {'b': {'c.py': '...\nimport x as y'}}},
             'a.b.c',
-            ImportInModule(import_path=DotPath('x'), line_no=2),
+            ImportInModule(dot_path=DotPath('x'), line_no=2),
         ),
     ],
 )
@@ -121,8 +121,8 @@ def test_absolute_import(project_path: Path, path: DotPath, import_obj):
 def test_import_in_nested_block(project_path):
     base_node = build_import_model(project_path)
     assert base_node.get(DotPath('a')).imports == [
-        ImportInModule(import_path=DotPath('foo'), line_no=2),
-        ImportInModule(import_path=DotPath('bar'), line_no=4),
+        ImportInModule(dot_path=DotPath('foo'), line_no=2),
+        ImportInModule(dot_path=DotPath('bar'), line_no=4),
     ]
 
 

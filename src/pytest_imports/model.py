@@ -11,6 +11,16 @@ class DotPath:
     as it is used for imports in Python.
 
     Largely follows the Path interface from pathlib.
+
+    A `DotPath` instance is just a sequence of dot-separated parts; on
+    its own it carries no commitment to being absolute, relative, or
+    non-empty. Interpretation is contextual. The convention in this
+    project is that fields and properties *named* `dot_path` (e.g.,
+    `ModuleNode.dot_path`, `ImportInModule.dot_path`) always hold a
+    fully qualified absolute path. Internal helpers (tree traversal,
+    scope exclusions, intermediate parse state) may use `DotPath` for
+    relative paths or the empty path; those uses are documented at
+    their call sites.
     """
 
     def __init__(self, path: str | Iterable[str] | DotPath | None = None):
@@ -79,9 +89,15 @@ class DotPath:
 
 @dataclass
 class ImportInModule:
-    """Represents a single import in a module."""
+    """Represents a single import in a module.
 
-    import_path: DotPath
+    `dot_path` is the fully qualified dotted name of the import target.
+    It is always absolute, even when the source statement is a relative
+    import — in that case the relativity is recorded separately by
+    `level > 0`.
+    """
+
+    dot_path: DotPath
     line_no: int
     level: int = 0
 
