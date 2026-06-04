@@ -39,7 +39,7 @@ def test_layered_architecture(imports):
         'myapp.api':                   must_import('myapp.core'),
     })
 ```
-`scope('myapp', without='api')` covers all of `myapp` except `myapp.api` and its descendants. Pass a list to exclude multiple paths: `without=['api', 'adapters']`.
+`scope('myapp', without='api')` covers all of `myapp` except `myapp.api` and its descendants. The excluded name can be a subpackage (`api/`) or a `.py` module file (`plugin.py`) — anything that appears as a direct or nested name in the tree. Pass a list to exclude multiple paths: `without=['api', 'adapters']`.
 
 ```python
 def test_no_relative_imports_in_public_api(imports):
