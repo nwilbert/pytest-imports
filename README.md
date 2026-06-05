@@ -30,17 +30,33 @@ If your project structure is "normal" then you can simply start using the `impor
 ### Complex examples
 Dot paths in rules are always specified as fully qualified absolute paths (using `.` as separator). See [Terminology](#terminology) and [GLOSSARY.md](GLOSSARY.md) for the project's vocabulary.
 
+Quick reference of the building blocks used below:
+
+| Name | Kind | Purpose |
+|---|---|---|
+| [`scope(path)`](#example-layered) | scope | Restrict a rule to `path` and its descendants. |
+| [`scope(path, without=...)`](#example-layered) | scope | Same, but exclude named submodules or subpackages. |
+| [`project()`](#example-private) | scope | All modules under the configured source roots. |
+| [`must_import(target)`](#example-layered) | predicate | Require an import of `target` (or a descendant) in scope. |
+| [`must_not_import(target)`](#example-layered) | predicate | Forbid imports of `target` (or a descendant) in scope. |
+| [`must_not_import_private()`](#example-private) | predicate | Forbid imports of any private (`_`-prefixed) name. |
+| [`descendants(path)`](#example-descendants) | target | Match descendants of `path` but not `path` itself. |
+| [`internal()`](#example-internal) | target | Match any import resolving inside the source roots. |
+| [`via='absolute'` / `via='relative'`](#example-via) | option | Restrict a predicate to one import style. |
+
+<a id="example-layered"></a>
 ```python
 from pytest_imports import must_import, must_not_import, scope
 
 def test_layered_architecture(imports):
     imports.check({
         scope('myapp', without='api'): must_not_import('myapp.api'),
-        'myapp.api':                   must_import('myapp.core'),
+        'myapp.api': must_import('myapp.core'),
     })
 ```
 `scope('myapp', without='api')` covers all of `myapp` except `myapp.api` and its descendants. The excluded name can be a subpackage (`api/`) or a `.py` module file (`plugin.py`) — anything that appears as a direct or nested name in the tree. Pass a list to exclude multiple paths: `without=['api', 'adapters']`.
 
+<a id="example-via"></a>
 ```python
 def test_no_relative_imports_in_public_api(imports):
     imports.check({
@@ -60,6 +76,7 @@ def test_multiple_rules_per_scope(imports):
 ```
 A list of predicates can be used to apply multiple rules to the same scope. All failures are reported together rather than stopping at the first violation.
 
+<a id="example-private"></a>
 ```python
 from pytest_imports import must_not_import_private, project
 
@@ -70,6 +87,7 @@ def test_no_private_imports(imports):
 ```
 `must_not_import_private()` checks that no module imports a private name — any dotted-path part starting with `_` or `__`, except the standard `__future__` module. `project()` is a special scope covering all modules under the configured source root — see [Configuration](#configuration) for which paths that includes (notably, with a `src/` layout `project()` does *not* include test folders, but with a flat layout it does). You can restrict to a specific package with `must_not_import_private('myapp')`.
 
+<a id="example-descendants"></a>
 ```python
 from pytest_imports import descendants, must_not_import, scope
 
@@ -81,6 +99,7 @@ def test_capture_internals_are_encapsulated(imports):
 ```
 `descendants('myapp.capture')` is a target helper that matches the descendants of `myapp.capture` (`myapp.capture.parser`, `myapp.capture.config`, …) but **not** `myapp.capture` itself. This lets the rest of `myapp` use the `myapp.capture` public surface (`import myapp.capture`) while keeping its internals private. A plain string target like `'myapp.capture'` would also flag `import myapp.capture`, which is usually not what you want here.
 
+<a id="example-internal"></a>
 ```python
 from pytest_imports import internal, must_not_import, project
 
