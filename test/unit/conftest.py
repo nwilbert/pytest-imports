@@ -24,4 +24,4 @@ def imports_root_node(project_structure, mocker):
         return _yield_project_modules(project_structure, Path())
 
     mocker.patch('pytest_imports.parser._walk_modules', mock_walk_modules)
-    return build_import_model(Path())
+    return build_import_model([Path()])

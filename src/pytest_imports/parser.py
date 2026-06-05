@@ -8,17 +8,18 @@ from .model import DotPath, ImportInModule, RootNode
 log = logging.getLogger(__name__)
 
 
-def build_import_model(base_path: Path) -> RootNode:
+def build_import_model(base_paths: Sequence[Path]) -> RootNode:
     root_node = RootNode()
-    for module_path, module_content in _walk_modules(base_path):
-        module_ast = ast.parse(module_content, str(module_path))
-        dot_path = DotPath.from_path(module_path.relative_to(base_path))
-        node = root_node.get_or_add(dot_path, module_path)
-        imports = _collect_imports(module_ast, dot_path)
-        if module_path.name == '__init__.py':
-            node.add_data_for_init_file(imports)
-        else:
-            node.add_imports(imports)
+    for base_path in base_paths:
+        for module_path, module_content in _walk_modules(base_path):
+            module_ast = ast.parse(module_content, str(module_path))
+            dot_path = DotPath.from_path(module_path.relative_to(base_path))
+            node = root_node.get_or_add(dot_path, module_path)
+            imports = _collect_imports(module_ast, dot_path)
+            if module_path.name == '__init__.py':
+                node.add_data_for_init_file(imports)
+            else:
+                node.add_imports(imports)
     return root_node
 
 

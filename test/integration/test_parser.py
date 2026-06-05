@@ -48,7 +48,7 @@ def project_path(project_structure: dict[str, str | dict], tmp_path: Path) -> Pa
     ],
 )
 def test_relative_import(project_path: Path, path: DotPath, import_obj):
-    base_node = build_import_model(project_path)
+    base_node = build_import_model([project_path])
     assert base_node.get(DotPath(path)).imports == [import_obj]
 
 
@@ -61,7 +61,7 @@ def test_relative_import(project_path: Path, path: DotPath, import_obj):
     ],
 )
 def test_relative_import_beyond_base(project_path, caplog):
-    base_node = build_import_model(project_path)
+    base_node = build_import_model([project_path])
     warnings = [
         record for record in caplog.records if record.levelno == logging.WARNING
     ]
@@ -79,7 +79,7 @@ def test_relative_import_beyond_base(project_path, caplog):
     ],
 )
 def test_import_from_init(project_path):
-    base_node = build_import_model(project_path)
+    base_node = build_import_model([project_path])
     assert base_node.get(DotPath('a')).imports == [ImportInModule(DotPath('x'), 1)]
 
 
@@ -101,7 +101,7 @@ def test_import_from_init(project_path):
     ],
 )
 def test_absolute_import(project_path: Path, path: DotPath, import_obj):
-    base_node = build_import_model(project_path)
+    base_node = build_import_model([project_path])
     assert base_node.get(DotPath(path)).imports == [import_obj]
 
 
@@ -119,7 +119,7 @@ def test_absolute_import(project_path: Path, path: DotPath, import_obj):
     ],
 )
 def test_import_in_nested_block(project_path):
-    base_node = build_import_model(project_path)
+    base_node = build_import_model([project_path])
     assert base_node.get(DotPath('a')).imports == [
         ImportInModule(dot_path=DotPath('foo'), line_no=2),
         ImportInModule(dot_path=DotPath('bar'), line_no=4),
@@ -150,7 +150,7 @@ def test_import_in_nested_block(project_path):
     ],
 )
 def test_project_structure_nodes(project_path: Path):
-    node = build_import_model(project_path)
+    node = build_import_model([project_path])
     assert len(node.get(DotPath('a')).imports) == 0
     assert node.get(DotPath('a'))._file_path == project_path / 'a'
     assert len(node.get(DotPath('a.b')).imports) == 2
@@ -171,7 +171,7 @@ def test_project_structure_nodes(project_path: Path):
     ],
 )
 def test_hidden_dirs_and_files_are_excluded(project_path: Path):
-    node = build_import_model(project_path)
+    node = build_import_model([project_path])
     assert node.get(DotPath('a.b'))
     assert len(node.get(DotPath('a'))._children) == 1
     assert len(node._children) == 1
@@ -186,5 +186,5 @@ def test_hidden_dirs_and_files_are_excluded(project_path: Path):
     ],
 )
 def test_empty_file(project_path):
-    base_node = build_import_model(project_path)
+    base_node = build_import_model([project_path])
     assert base_node.get(DotPath('a')).imports == []

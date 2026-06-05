@@ -94,14 +94,28 @@ def test_project_path_from_heuristic_with_setup_py(pytester):
     result.assert_outcomes(passed=1)
 
 
-def test_project_path_multiple_not_implemented(pytester):
+def test_multiple_project_paths(pytester):
+    (pytester.path / 'root1' / 'foo').mkdir(parents=True)
+    (pytester.path / 'root1' / 'foo' / '__init__.py').write_text('')
+    (pytester.path / 'root1' / 'foo' / 'a.py').write_text('from bar import b')
+    (pytester.path / 'root2' / 'bar').mkdir(parents=True)
+    (pytester.path / 'root2' / 'bar' / '__init__.py').write_text('')
+    (pytester.path / 'root2' / 'bar' / 'b.py').write_text('x = 1')
     pytester.makepyprojecttoml("""
         [tool.pytest.ini_options]
         imports_project_paths = [
-            "foobar",
-            "/foo/bar"
+            "root1",
+            "root2",
         ]
     """)
-    pytester.makepyfile('def test_arch(imports): pass')
+    pytester.makepyfile("""
+        from pytest_imports import must_import, must_not_import
+
+        def test_arch(imports):
+            imports.check({
+                'foo.a': must_import('bar.b'),
+                'bar.b': must_not_import('foo'),
+            })
+    """)
     result = pytester.runpytest()
-    result.assert_outcomes(errors=1)
+    result.assert_outcomes(passed=1)

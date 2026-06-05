@@ -49,10 +49,8 @@ def imports_root_node(imports_project_paths: Sequence[Path]) -> RootNode:
 
     Normally this isn't used explicitly in tests.
     """
-    if len(imports_project_paths) != 1:
-        raise NotImplementedError()
-    log.info(f'creating import model for {imports_project_paths[0]}')
-    return build_import_model(imports_project_paths[0])
+    log.info(f'creating import model for {list(imports_project_paths)}')
+    return build_import_model(imports_project_paths)
 
 
 @pytest.fixture(scope='session')
