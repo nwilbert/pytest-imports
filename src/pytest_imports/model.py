@@ -5,103 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path, PurePath
 
 
-class DotPath:
-    """
-    Represent a 'path' with dot as the separator,
-    as it is used for imports in Python.
-
-    Largely follows the Path interface from pathlib.
-
-    A `DotPath` instance is just a sequence of dot-separated parts; on
-    its own it carries no commitment to being absolute, relative, or
-    non-empty. Interpretation is contextual. The convention in this
-    project is that fields and properties *named* `dot_path` (e.g.,
-    `ModuleNode.dot_path`, `ImportInModule.dot_path`) always hold a
-    fully qualified absolute path. Internal helpers (tree traversal,
-    scope exclusions, intermediate parse state) may use `DotPath` for
-    relative paths or the empty path; those uses are documented at
-    their call sites.
-    """
-
-    def __init__(self, path: str | Iterable[str] | DotPath | None = None):
-        self._parts: tuple[str, ...]
-        self._hash: int | None = None
-        match path:
-            case None | '' | []:
-                self._parts = ()
-            case str():
-                self._parts = tuple(path.split('.'))
-            case DotPath():
-                self._parts = path.parts
-            case _:
-                self._parts = tuple(path)
-
-    @classmethod
-    def from_path(cls, path: PurePath) -> DotPath:
-        parts = list(path.parts)
-        if len(parts) == 0:
-            return DotPath()
-        if parts[-1] == '__init__.py':
-            parts.pop()
-        else:
-            parts[-1] = parts[-1].removesuffix('.py')
-        return cls(parts)
-
-    def is_relative_to(self, other: DotPath) -> bool:
-        if len(other.parts) > len(self.parts):
-            return False
-        return other.parts == self.parts[: len(other.parts)]
-
-    @property
-    def parts(self) -> tuple[str, ...]:
-        return self._parts
-
-    @property
-    def name(self) -> str:
-        return self._parts[-1]
-
-    @property
-    def parent(self) -> DotPath:
-        return DotPath(self._parts[:-1])
-
-    def __str__(self) -> str:
-        return '.'.join(self._parts)
-
-    def __repr__(self) -> str:
-        return f'{type(self).__name__}({self.parts})'
-
-    def __hash__(self) -> int:
-        if self._hash is None:
-            self._hash = hash(tuple(self._parts))
-        return self._hash
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, DotPath):
-            return NotImplemented
-        return self._parts == other._parts
-
-    def __truediv__(self, other: DotPath | str) -> DotPath:
-        return DotPath(self.parts + DotPath(other).parts)
-
-    def __rtruediv__(self, other: DotPath | str) -> DotPath:
-        return DotPath(DotPath(other).parts + self.parts)
-
-
-@dataclass
-class ImportInModule:
-    """Represents a single import in a module.
-
-    `dot_path` is the fully qualified dotted name of the import target.
-    It is always absolute, even when the source statement is a relative
-    import — in that case the relativity is recorded separately by
-    `level > 0`.
-    """
-
-    dot_path: DotPath
-    line_no: int
-    level: int = 0
-
-
 class RootNode:
     """Represents the root of a tree of module nodes."""
 
@@ -118,9 +21,6 @@ class RootNode:
         if child := self._children.get(dot_path.parts[0]):
             return child.get(DotPath(dot_path.parts[1:]))
         return None
-
-    def _child_dotpath(self, name: str) -> DotPath:
-        return DotPath(name)
 
     def get_or_add(self, dot_path: DotPath, file_path: Path) -> ModuleNode:
         if not dot_path.parts:
@@ -139,6 +39,9 @@ class RootNode:
             )
             self._children[name] = child
         return child.get_or_add(remaining_path, file_path)
+
+    def _child_dotpath(self, name: str) -> DotPath:
+        return DotPath(name)
 
 
 class ModuleNode(RootNode):
@@ -185,28 +88,11 @@ class ModuleNode(RootNode):
         """
         return self._file_path
 
-    def add_imports(self, imports: Iterable[ImportInModule]) -> None:
-        self._imports += imports
-
-    def add_data_for_init_file(self, imports: Iterable[ImportInModule]) -> None:
-        """Turn a directory node into a package node,
-        with data from the `__init__.py` file.
-
-        There is no separate node for the `__init__.py` file.
-        """
-        if self._file_path.name != '__init__.py':
-            assert not self._file_path.suffix
-            self._file_path /= '__init__.py'
-        self.add_imports(imports)
-
     def get(self, dot_path: DotPath) -> ModuleNode | None:
         """Return the node from this tree corresponding to the dot path."""
         if not dot_path.parts:
             return self
         return super().get(dot_path)
-
-    def _child_dotpath(self, name: str) -> DotPath:
-        return self._dot_path / name
 
     def get_or_add(self, dot_path: DotPath, file_path: Path) -> ModuleNode:
         """Return the node for this dot_path.
@@ -236,3 +122,117 @@ class ModuleNode(RootNode):
                 if DotPath() in relative_exclude:
                     continue
             yield from child.walk(exclude=relative_exclude)
+
+    def add_imports(self, imports: Iterable[ImportInModule]) -> None:
+        self._imports += imports
+
+    def add_data_for_init_file(self, imports: Iterable[ImportInModule]) -> None:
+        """Turn a directory node into a package node,
+        with data from the `__init__.py` file.
+
+        There is no separate node for the `__init__.py` file.
+        """
+        if self._file_path.name != '__init__.py':
+            assert not self._file_path.suffix
+            self._file_path /= '__init__.py'
+        self.add_imports(imports)
+
+    def _child_dotpath(self, name: str) -> DotPath:
+        return self._dot_path / name
+
+
+@dataclass
+class ImportInModule:
+    """Represents a single import in a module.
+
+    `dot_path` is the fully qualified dotted name of the import target.
+    It is always absolute, even when the source statement is a relative
+    import — in that case the relativity is recorded separately by
+    `level > 0`.
+    """
+
+    dot_path: DotPath
+    line_no: int
+    level: int = 0
+
+
+class DotPath:
+    """
+    Represent a 'path' with dot as the separator,
+    as it is used for imports in Python.
+
+    Largely follows the Path interface from pathlib.
+
+    A `DotPath` instance is just a sequence of dot-separated parts; on
+    its own it carries no commitment to being absolute, relative, or
+    non-empty. Interpretation is contextual. The convention in this
+    project is that fields and properties *named* `dot_path` (e.g.,
+    `ModuleNode.dot_path`, `ImportInModule.dot_path`) always hold a
+    fully qualified absolute path. Internal helpers (tree traversal,
+    scope exclusions, intermediate parse state) may use `DotPath` for
+    relative paths or the empty path; those uses are documented at
+    their call sites.
+    """
+
+    def __init__(self, path: str | Iterable[str] | DotPath | None = None):
+        self._parts: tuple[str, ...]
+        self._hash: int | None = None
+        match path:
+            case None | '' | []:
+                self._parts = ()
+            case str():
+                self._parts = tuple(path.split('.'))
+            case DotPath():
+                self._parts = path.parts
+            case _:
+                self._parts = tuple(path)
+
+    @classmethod
+    def from_path(cls, path: PurePath) -> DotPath:
+        parts = list(path.parts)
+        if len(parts) == 0:
+            return DotPath()
+        if parts[-1] == '__init__.py':
+            parts.pop()
+        else:
+            parts[-1] = parts[-1].removesuffix('.py')
+        return cls(parts)
+
+    @property
+    def parts(self) -> tuple[str, ...]:
+        return self._parts
+
+    @property
+    def name(self) -> str:
+        return self._parts[-1]
+
+    @property
+    def parent(self) -> DotPath:
+        return DotPath(self._parts[:-1])
+
+    def is_relative_to(self, other: DotPath) -> bool:
+        if len(other.parts) > len(self.parts):
+            return False
+        return other.parts == self.parts[: len(other.parts)]
+
+    def __str__(self) -> str:
+        return '.'.join(self._parts)
+
+    def __repr__(self) -> str:
+        return f'{type(self).__name__}({self.parts})'
+
+    def __hash__(self) -> int:
+        if self._hash is None:
+            self._hash = hash(tuple(self._parts))
+        return self._hash
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DotPath):
+            return NotImplemented
+        return self._parts == other._parts
+
+    def __truediv__(self, other: DotPath | str) -> DotPath:
+        return DotPath(self.parts + DotPath(other).parts)
+
+    def __rtruediv__(self, other: DotPath | str) -> DotPath:
+        return DotPath(DotPath(other).parts + self.parts)

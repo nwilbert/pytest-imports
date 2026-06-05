@@ -6,19 +6,6 @@ from typing import Literal
 
 from .model import DotPath, ImportInModule, ModuleNode, RootNode
 
-Via = Literal['absolute', 'relative']
-
-
-@dataclass(frozen=True)
-class Scope:
-    """A module scope (package or module) to be checked for imports.
-
-    path=None means the entire project (all modules).
-    """
-
-    path: str | None = None
-    without: tuple[str, ...] = ()
-
 
 def scope(path: str, *, without: str | list[str] | None = None) -> Scope:
     if isinstance(without, str):
@@ -31,21 +18,6 @@ def project() -> Scope:
     return Scope(path=None)
 
 
-@dataclass(frozen=True)
-class Descendants:
-    """Target matching the descendants of `path`, excluding `path` itself."""
-
-    path: str
-
-
-@dataclass(frozen=True)
-class Internal:
-    """Target matching any import resolving inside the configured source roots."""
-
-
-Target = str | Descendants | Internal
-
-
 def descendants(path: str) -> Descendants:
     return Descendants(path=path)
 
@@ -54,42 +26,16 @@ def internal() -> Internal:
     return Internal()
 
 
-@dataclass(frozen=True)
-class MustImport:
-    """Predicate asserting that a scope must contain a given import."""
-
-    path: Target
-    via: Via | None = None
-
-
 def must_import(path: Target, *, via: Via | None = None) -> MustImport:
     return MustImport(path=path, via=via)
-
-
-@dataclass(frozen=True)
-class MustNotImport:
-    """Predicate asserting that a scope must not contain a given import."""
-
-    path: Target
-    via: Via | None = None
 
 
 def must_not_import(path: Target, *, via: Via | None = None) -> MustNotImport:
     return MustNotImport(path=path, via=via)
 
 
-@dataclass(frozen=True)
-class MustNotImportPrivate:
-    """Predicate asserting that a scope must not import any private symbol."""
-
-    path: str | None = None
-
-
 def must_not_import_private(path: str | None = None) -> MustNotImportPrivate:
     return MustNotImportPrivate(path=path)
-
-
-Predicate = MustImport | MustNotImport | MustNotImportPrivate
 
 
 def evaluate_rules(
@@ -124,6 +70,61 @@ def evaluate_rules(
                 )
 
     return failures
+
+
+Via = Literal['absolute', 'relative']
+
+
+@dataclass(frozen=True)
+class Scope:
+    """A module scope (package or module) to be checked for imports.
+
+    path=None means the entire project (all modules).
+    """
+
+    path: str | None = None
+    without: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Descendants:
+    """Target matching the descendants of `path`, excluding `path` itself."""
+
+    path: str
+
+
+@dataclass(frozen=True)
+class Internal:
+    """Target matching any import resolving inside the configured source roots."""
+
+
+Target = str | Descendants | Internal
+
+
+@dataclass(frozen=True)
+class MustImport:
+    """Predicate asserting that a scope must contain a given import."""
+
+    path: Target
+    via: Via | None = None
+
+
+@dataclass(frozen=True)
+class MustNotImport:
+    """Predicate asserting that a scope must not contain a given import."""
+
+    path: Target
+    via: Via | None = None
+
+
+@dataclass(frozen=True)
+class MustNotImportPrivate:
+    """Predicate asserting that a scope must not import any private symbol."""
+
+    path: str | None = None
+
+
+Predicate = MustImport | MustNotImport | MustNotImportPrivate
 
 
 def _evaluate_predicate(
@@ -175,6 +176,36 @@ def _evaluate_predicate(
                 )
 
 
+def _find_matching_imports(
+    base_node: ModuleNode,
+    exclude: list[DotPath],
+    target: Target,
+    via: Via | None,
+    root_node: RootNode,
+) -> Iterator[tuple[ModuleNode, ImportInModule]]:
+    absolute = _via_to_absolute(via)
+    for module_node in base_node.walk(exclude=exclude):
+        for import_by in module_node.imports:
+            if _match_target(target, import_by.dot_path, root_node) and (
+                absolute is None or absolute != bool(import_by.level)
+            ):
+                yield module_node, import_by
+
+
+def _find_matching_private_imports(
+    base_node: ModuleNode,
+    exclude: list[DotPath],
+    path: str | None,
+) -> Iterator[tuple[ModuleNode, ImportInModule]]:
+    filter_path = DotPath(path) if path else None
+    for module_node in base_node.walk(exclude=exclude):
+        for import_by in module_node.imports:
+            if filter_path and not import_by.dot_path.is_relative_to(filter_path):
+                continue
+            if any(_is_private_name(p) for p in import_by.dot_path.parts):
+                yield module_node, import_by
+
+
 def _match_target(target: Target, dot_path: DotPath, root_node: RootNode) -> bool:
     match target:
         case str():
@@ -206,43 +237,13 @@ def _format_target(target: Target) -> str:
             return 'any internal module'
 
 
-def _find_matching_imports(
-    base_node: ModuleNode,
-    exclude: list[DotPath],
-    target: Target,
-    via: Via | None,
-    root_node: RootNode,
-) -> Iterator[tuple[ModuleNode, ImportInModule]]:
-    absolute = _via_to_absolute(via)
-    for module_node in base_node.walk(exclude=exclude):
-        for import_by in module_node.imports:
-            if _match_target(target, import_by.dot_path, root_node) and (
-                absolute is None or absolute != bool(import_by.level)
-            ):
-                yield module_node, import_by
-
-
-def _find_matching_private_imports(
-    base_node: ModuleNode,
-    exclude: list[DotPath],
-    path: str | None,
-) -> Iterator[tuple[ModuleNode, ImportInModule]]:
-    filter_path = DotPath(path) if path else None
-    for module_node in base_node.walk(exclude=exclude):
-        for import_by in module_node.imports:
-            if filter_path and not import_by.dot_path.is_relative_to(filter_path):
-                continue
-            if any(_is_private_name(p) for p in import_by.dot_path.parts):
-                yield module_node, import_by
-
-
-def _is_private_name(name: str) -> bool:
-    return name.startswith('_') and name != '__future__'
-
-
 def _via_to_absolute(via: Via | None) -> bool | None:
     if via == 'absolute':
         return True
     if via == 'relative':
         return False
     return None
+
+
+def _is_private_name(name: str) -> bool:
+    return name.startswith('_') and name != '__future__'

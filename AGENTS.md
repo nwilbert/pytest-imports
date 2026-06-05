@@ -60,6 +60,11 @@ The plugin registers itself via the `pytest11` entry point in `pyproject.toml`, 
 - `test/integration/` — tests using real project files on disk
 - `test/arch/` — self-referential architecture tests for this project
 
+## Code organization
+
+- Step-down rule: callers before callees, public before private. Read
+  each file top-down from high-level API to implementation details.
+
 ## Documentation
 
 - Always update AGENTS.md and README.md when making changes that affect commands, architecture, or usage.
