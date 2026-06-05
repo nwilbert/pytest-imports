@@ -29,6 +29,7 @@ uv run nox -s pytest_compat     # tests across Python + pytest version matrix (i
 uv run nox -s lint
 uv run nox -s mypy
 uv run nox -s coverage
+uv run nox -s benchmark         # run the plugin against a pinned Django checkout and print timings
 
 # Run tests directly (faster, no nox overhead)
 uv run pytest
@@ -59,6 +60,9 @@ The plugin registers itself via the `pytest11` entry point in `pyproject.toml`, 
 - `test/unit/` — isolated unit tests (no filesystem)
 - `test/integration/` — tests using real project files on disk
 - `test/arch/` — self-referential architecture tests for this project
+- `benchmark/` — performance benchmark against a pinned Django
+  checkout; see `benchmark/conftest.py` for details. Run via
+  `uv run nox -s benchmark`.
 
 ## Code organization
 

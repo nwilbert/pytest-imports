@@ -32,6 +32,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/pytest_imports"]
 
+[tool.pytest.ini_options]
+testpaths = ["test/unit", "test/integration", "test/arch"]
+
 [tool.ruff.format]
 quote-style = "single"
 
