@@ -13,6 +13,7 @@ nox.options.sessions = [
     'lint',
     'mypy',
     'test',
+    'coverage',
     'audit',
 ]
 
