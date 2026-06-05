@@ -188,3 +188,36 @@ def test_hidden_dirs_and_files_are_excluded(project_path: Path):
 def test_empty_file(project_path):
     base_node = build_import_model([project_path])
     assert base_node.get(DotPath('a')).imports == []
+
+
+def test_dot_prefixed_ancestor_does_not_exclude_base_path(tmp_path: Path):
+    """A dot-prefixed directory above the source root must not hide files inside it."""
+    hidden_parent = tmp_path / '.hidden_parent'
+    base = hidden_parent / 'project'
+    base.mkdir(parents=True)
+    (base / 'a.py').write_text('import x')
+    node = build_import_model([base])
+    assert node.get(DotPath('a')).imports == [ImportInModule(DotPath('x'), 1)]
+
+
+def test_utf8_encoded_source_is_handled(tmp_path: Path):
+    """Source files are read as UTF-8 regardless of the platform default."""
+    (tmp_path / 'a.py').write_text(
+        '# comment with non-ascii: éè中\nimport x\n', encoding='utf-8'
+    )
+    node = build_import_model([tmp_path])
+    assert node.get(DotPath('a')).imports == [ImportInModule(DotPath('x'), 2)]
+
+
+def test_syntax_error_is_skipped_with_warning(tmp_path: Path, caplog):
+    """A file that fails to parse is skipped — it does not abort the model build."""
+    (tmp_path / 'broken.py').write_text('1invalid_token = 2\n')
+    (tmp_path / 'good.py').write_text('import x\n')
+    with caplog.at_level(logging.WARNING):
+        node = build_import_model([tmp_path])
+    assert node.get(DotPath('good')).imports == [ImportInModule(DotPath('x'), 1)]
+    assert node.get(DotPath('broken')) is None
+    assert any(
+        'broken.py' in record.message and record.levelno == logging.WARNING
+        for record in caplog.records
+    )
