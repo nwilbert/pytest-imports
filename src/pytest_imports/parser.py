@@ -1,5 +1,6 @@
 import ast
 import logging
+import warnings
 from collections.abc import Generator, Sequence
 from pathlib import Path
 
@@ -13,7 +14,13 @@ def build_import_model(base_paths: Sequence[Path]) -> RootNode:
     for base_path in base_paths:
         for module_path, module_source in _walk_modules(base_path):
             try:
-                module_ast = ast.parse(module_source, str(module_path))
+                with warnings.catch_warnings():
+                    # We are inspecting potentially-broken user code; warnings
+                    # like SyntaxWarning ("invalid decimal literal") or
+                    # DeprecationWarning emitted during parse are not actionable
+                    # by callers of this plugin.
+                    warnings.simplefilter('ignore')
+                    module_ast = ast.parse(module_source, str(module_path))
             except SyntaxError as exc:
                 log.warning(f'Skipping {module_path}: {exc}')
                 continue

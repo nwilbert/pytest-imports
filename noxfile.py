@@ -151,19 +151,22 @@ def _ensure_benchmark_checkout(session: nox.Session) -> None:
     if (BENCHMARK_CHECKOUT / '.git').exists():
         head = str(
             session.run(
-                'git', '-C', str(BENCHMARK_CHECKOUT), 'rev-parse', 'HEAD',
-                external=True, silent=True,
+                'git',
+                '-C',
+                str(BENCHMARK_CHECKOUT),
+                'rev-parse',
+                'HEAD',
+                external=True,
+                silent=True,
             )
         ).strip()
         if head == BENCHMARK_COMMIT:
             session.log(
-                f'Reusing existing checkout at {BENCHMARK_CHECKOUT} '
-                f'(HEAD {head[:12]})'
+                f'Reusing existing checkout at {BENCHMARK_CHECKOUT} (HEAD {head[:12]})'
             )
             return
         session.log(
-            f'Updating {BENCHMARK_CHECKOUT} from {head[:12]} '
-            f'to {BENCHMARK_COMMIT[:12]}'
+            f'Updating {BENCHMARK_CHECKOUT} from {head[:12]} to {BENCHMARK_COMMIT[:12]}'
         )
     else:
         BENCHMARK_CHECKOUT.parent.mkdir(parents=True, exist_ok=True)
@@ -173,14 +176,31 @@ def _ensure_benchmark_checkout(session: nox.Session) -> None:
         )
         session.run('git', 'init', str(BENCHMARK_CHECKOUT), external=True)
         session.run(
-            'git', '-C', str(BENCHMARK_CHECKOUT), 'remote', 'add', 'origin',
-            BENCHMARK_REPO, external=True,
+            'git',
+            '-C',
+            str(BENCHMARK_CHECKOUT),
+            'remote',
+            'add',
+            'origin',
+            BENCHMARK_REPO,
+            external=True,
         )
     session.run(
-        'git', '-C', str(BENCHMARK_CHECKOUT), 'fetch', '--depth', '1',
-        'origin', BENCHMARK_COMMIT, external=True,
+        'git',
+        '-C',
+        str(BENCHMARK_CHECKOUT),
+        'fetch',
+        '--depth',
+        '1',
+        'origin',
+        BENCHMARK_COMMIT,
+        external=True,
     )
     session.run(
-        'git', '-C', str(BENCHMARK_CHECKOUT), 'checkout', 'FETCH_HEAD',
+        'git',
+        '-C',
+        str(BENCHMARK_CHECKOUT),
+        'checkout',
+        'FETCH_HEAD',
         external=True,
     )

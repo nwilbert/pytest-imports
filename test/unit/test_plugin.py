@@ -71,9 +71,9 @@ def test_check_scope_without_nested_path(imports):
     """`without=` accepts dotted nested paths, not just direct submodule names."""
     # `without='b.c'` excludes r.b.c only — r.a and r.b.d are still in scope.
     imports.check({scope('r', without='b.c'): must_not_import('c_imp')})
-    with pytest.raises(AssertionError, match='a.py'):
+    with pytest.raises(AssertionError, match=r'a\.py'):
         imports.check({scope('r', without='b.c'): must_not_import('a_imp')})
-    with pytest.raises(AssertionError, match='d.py'):
+    with pytest.raises(AssertionError, match=r'd\.py'):
         imports.check({scope('r', without='b.c'): must_not_import('d_imp')})
 
 
