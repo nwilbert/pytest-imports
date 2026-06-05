@@ -19,29 +19,27 @@ PROJECT_CONFIG_FILES = ['pyproject.toml', 'setup.cfg', 'setup.py']
 @pytest.fixture
 def imports(imports_root_node: RootNode) -> ImportsFixture:
     """
-    Provides a factory that is used to create the architecture representation
-    objects for test assertions.
+    Provides the entry point for checking import rules in tests.
     """
     return ImportsFixture(imports_root_node)
 
 
 class ImportsFixture:
-    """Provides architecture rule checking for test assertions."""
+    """Provides import rule checking for test assertions."""
 
     def __init__(self, imports_root_node: RootNode):
         self._root_node = imports_root_node
 
     def check(self, rules: dict[str | Scope, Predicate | list[Predicate]]) -> None:
         """
-        Check a set of architecture import rules.
+        Check a set of import rules, each mapping a scope to one or more
+        predicates.
 
         Raises AssertionError listing all violations if any rules fail.
         """
         failures = evaluate_rules(self._root_node, rules)
         if failures:
-            raise AssertionError(
-                'Architecture rule violations:\n' + '\n'.join(failures)
-            )
+            raise AssertionError('Import rule violations:\n' + '\n'.join(failures))
 
 
 @pytest.fixture(scope='session')
@@ -53,7 +51,7 @@ def imports_root_node(imports_project_paths: Sequence[Path]) -> RootNode:
     """
     if len(imports_project_paths) != 1:
         raise NotImplementedError()
-    log.info(f'creating architecture model for {imports_project_paths[0]}')
+    log.info(f'creating import model for {imports_project_paths[0]}')
     return build_import_model(imports_project_paths[0])
 
 

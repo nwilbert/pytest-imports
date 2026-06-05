@@ -45,14 +45,16 @@ class RootNode:
 
 
 class ModuleNode(RootNode):
-    """Represents a node in a Python module tree.
+    """Represents a node in the project's module tree.
 
-    Its main use is representing a Python module, but it can also
-    represent a simple directory.
+    A node typically represents a module — either a `.py` file or a
+    package. When the node represents a package, it carries the data
+    from that package's `__init__.py`; there is no separate node for
+    the `__init__.py` itself.
 
-    If the module is a package then the content of this node actually
-    represents the __init__.py file (in this case there is no separate
-    node for the __init__.py file).
+    A node may also represent an intermediate directory that has no
+    `__init__.py` of its own but contains descendant `.py` files.
+    Such a node carries no imports.
     """
 
     def __init__(self, name: str, full_dotpath: DotPath, file_path: Path):

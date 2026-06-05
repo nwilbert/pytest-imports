@@ -77,9 +77,11 @@ Via = Literal['absolute', 'relative']
 
 @dataclass(frozen=True)
 class Scope:
-    """A module scope (package or module) to be checked for imports.
+    """The set of modules a rule applies to.
 
-    path=None means the entire project (all modules).
+    `path` identifies the module at the root of the scope; the scope
+    covers that module and all of its descendants, minus any names
+    listed in `without`. `path=None` means the entire project.
     """
 
     path: str | None = None
@@ -119,7 +121,7 @@ class MustNotImport:
 
 @dataclass(frozen=True)
 class MustNotImportPrivate:
-    """Predicate asserting that a scope must not import any private symbol."""
+    """Predicate asserting that a scope must not import any private name."""
 
     path: str | None = None
 
@@ -170,7 +172,7 @@ def _evaluate_predicate(
                 node, exclude, predicate.path
             ):
                 failures.append(
-                    f'  [scope {scope_label}] must not import private symbols'
+                    f'  [scope {scope_label}] must not import private names'
                     + (f' from {predicate.path}' if predicate.path else '')
                     + f' — found in {module_node.file_path}:{import_by.line_no}'
                 )
