@@ -1,8 +1,8 @@
 from pytest_imports import (
+    internal,
     must_import,
     must_not_import,
     must_not_import_private,
-    must_not_import_within_parent,
     project,
     scope,
 )
@@ -26,7 +26,7 @@ def test_internal_dependencies(imports):
 def test_all_internal_imports_must_be_relative(imports):
     imports.check(
         {
-            project(): must_not_import_within_parent(via='absolute'),
+            project(): must_not_import(internal(), via='absolute'),
         }
     )
 

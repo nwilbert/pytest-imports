@@ -83,10 +83,13 @@ use these words less rigorously and can read as if `submodule` and
 
 - **scope** — The set of modules a rule applies to. Created via `scope(...)`,
   the bare string form (`'foo'`), or `project()` for the whole project.
-- **predicate** — A rule object (`CanImport`, `MustNotImport`,
-  `MustNotImportPrivate`, `MustNotImportWithinParent`, …) applied to a
-  scope. Built via factory functions like `must_import` and
-  `must_not_import`.
+- **predicate** — A rule object (`MustImport`, `MustNotImport`,
+  `MustNotImportPrivate`, …) applied to a scope. Built via factory
+  functions like `must_import` and `must_not_import`.
+- **target** — An import target selector accepted by `must_import` and
+  `must_not_import`: a dotted path string, or one of the helpers
+  `descendants(p)` (descendants of `p`, excluding `p` itself) or
+  `internal()` (any module under the configured source roots).
 - **project** — The full set of modules under the configured source
   roots. Returned by `project()` as a special scope. Whether this
   includes a `test/` or `tests/` directory depends on layout: with a

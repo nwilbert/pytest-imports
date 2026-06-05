@@ -71,16 +71,27 @@ def test_no_private_imports(imports):
 `must_not_import_private()` checks that no module imports a private symbol — any name starting with `_` or `__`, except the standard `__future__` module. `project()` is a special scope covering all modules under the configured source root — see [Configuration](#configuration) for which paths that includes (notably, with a `src/` layout `project()` does *not* include test folders, but with a flat layout it does). You can restrict to a specific package with `must_not_import_private('myapp')`.
 
 ```python
-from pytest_imports import must_not_import_within_parent, project
+from pytest_imports import descendants, must_not_import, scope
 
-def test_intra_package_imports_are_relative(imports):
+def test_capture_internals_are_encapsulated(imports):
     imports.check({
-        project(): must_not_import_within_parent(via='absolute'),
+        scope('myapp', without='capture'):
+            must_not_import(descendants('myapp.capture')),
     })
 ```
-`must_not_import_within_parent(via='absolute')` checks that no module uses an absolute import to import from its own (immediate parent) package. For example, if `myapp.core.bbb` imports `myapp.core.aaa`, it must use `from .aaa import ...` rather than `from myapp.core.aaa import ...`. The `via` argument is required: use `via='absolute'` to enforce relative imports for intra-package dependencies, or `via='relative'` to enforce the opposite.
+`descendants('myapp.capture')` is a target helper that matches the descendants of `myapp.capture` (`myapp.capture.parser`, `myapp.capture.config`, …) but **not** `myapp.capture` itself. This lets the rest of `myapp` use the `myapp.capture` public surface (`import myapp.capture`) while keeping its internals private. A plain string target like `'myapp.capture'` would also flag `import myapp.capture`, which is usually not what you want here.
 
-Note: This is similar to ruff's [TID252 (relative-imports)](https://docs.astral.sh/ruff/rules/relative-imports/#relative-imports-tid252) rule, but works in the opposite direction — TID252 bans relative imports in favor of absolute ones, while `must_not_import_within_parent(via='absolute')` bans absolute intra-package imports in favor of relative ones.
+```python
+from pytest_imports import internal, must_not_import, project
+
+def test_internal_imports_are_relative(imports):
+    imports.check({
+        project(): must_not_import(internal(), via='absolute'),
+    })
+```
+`internal()` is a target helper that matches every import whose target resolves to a module under the configured source roots. Combined with `via='absolute'` this enforces project-wide that all internal imports are written as relative imports — e.g. `from .aaa import ...` rather than `from myapp.core.aaa import ...`. Unlike a parent-package-only check, this also flags an absolute import of `myapp.other` from `myapp.core.bbb`.
+
+Note: This is similar to ruff's [TID252 (relative-imports)](https://docs.astral.sh/ruff/rules/relative-imports/#relative-imports-tid252) rule, but works in the opposite direction — TID252 bans relative imports in favor of absolute ones, while `must_not_import(internal(), via='absolute')` bans absolute internal imports in favor of relative ones.
 
 ## Details
 

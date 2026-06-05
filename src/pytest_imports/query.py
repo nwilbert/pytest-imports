@@ -32,14 +32,37 @@ def project() -> Scope:
 
 
 @dataclass(frozen=True)
+class Descendants:
+    """Target matching the descendants of `path`, excluding `path` itself."""
+
+    path: str
+
+
+@dataclass(frozen=True)
+class Internal:
+    """Target matching any import resolving inside the configured source roots."""
+
+
+Target = str | Descendants | Internal
+
+
+def descendants(path: str) -> Descendants:
+    return Descendants(path=path)
+
+
+def internal() -> Internal:
+    return Internal()
+
+
+@dataclass(frozen=True)
 class MustImport:
     """Predicate asserting that a scope must contain a given import."""
 
-    path: str
+    path: Target
     via: Via | None = None
 
 
-def must_import(path: str, *, via: Via | None = None) -> MustImport:
+def must_import(path: Target, *, via: Via | None = None) -> MustImport:
     return MustImport(path=path, via=via)
 
 
@@ -47,11 +70,11 @@ def must_import(path: str, *, via: Via | None = None) -> MustImport:
 class MustNotImport:
     """Predicate asserting that a scope must not contain a given import."""
 
-    path: str
+    path: Target
     via: Via | None = None
 
 
-def must_not_import(path: str, *, via: Via | None = None) -> MustNotImport:
+def must_not_import(path: Target, *, via: Via | None = None) -> MustNotImport:
     return MustNotImport(path=path, via=via)
 
 
@@ -66,21 +89,7 @@ def must_not_import_private(path: str | None = None) -> MustNotImportPrivate:
     return MustNotImportPrivate(path=path)
 
 
-@dataclass(frozen=True)
-class MustNotImportWithinParent:
-    """Predicate asserting that a scope must not import from its immediate
-    parent package using the specified import style (absolute or relative)."""
-
-    via: Via
-
-
-def must_not_import_within_parent(*, via: Via) -> MustNotImportWithinParent:
-    return MustNotImportWithinParent(via=via)
-
-
-Predicate = (
-    MustImport | MustNotImport | MustNotImportPrivate | MustNotImportWithinParent
-)
+Predicate = MustImport | MustNotImport | MustNotImportPrivate
 
 
 def evaluate_rules(
@@ -110,7 +119,9 @@ def evaluate_rules(
 
         for node in nodes:
             for predicate in predicate_list:
-                _evaluate_predicate(node, exclude, predicate, scope_label, failures)
+                _evaluate_predicate(
+                    node, exclude, predicate, scope_label, root_node, failures
+                )
 
     return failures
 
@@ -120,29 +131,39 @@ def _evaluate_predicate(
     exclude: list[DotPath],
     predicate: Predicate,
     scope_label: str,
+    root_node: RootNode,
     failures: list[str],
 ) -> None:
     match predicate:
         case MustImport():
-            target_path = DotPath(predicate.path)
+            target_str = _format_target(predicate.path)
             if not any(
-                _find_matching_imports(node, exclude, target_path, predicate.via)
+                _find_matching_imports(
+                    node, exclude, predicate.path, predicate.via, root_node
+                )
             ):
                 for module_node in node.walk(exclude=exclude):
                     if module_node.file_path.suffix == '.py':
                         failures.append(
-                            f'  [scope {scope_label}] must import {predicate.path}'
+                            f'  [scope {scope_label}] must import {target_str}'
                             f' — no matching import in {module_node.file_path}'
                         )
         case MustNotImport():
-            target_path = DotPath(predicate.path)
+            target_str = _format_target(predicate.path)
             for module_node, import_by in _find_matching_imports(
-                node, exclude, target_path, predicate.via
+                node, exclude, predicate.path, predicate.via, root_node
             ):
-                failures.append(
-                    f'  [scope {scope_label}] must not import {predicate.path}'
-                    f' — found in {module_node.file_path}:{import_by.line_no}'
-                )
+                location = f'{module_node.file_path}:{import_by.line_no}'
+                if isinstance(predicate.path, str):
+                    failures.append(
+                        f'  [scope {scope_label}] must not import {target_str}'
+                        f' — found in {location}'
+                    )
+                else:
+                    failures.append(
+                        f'  [scope {scope_label}] must not import {target_str}'
+                        f' — found {import_by.dot_path} in {location}'
+                    )
         case MustNotImportPrivate():
             for module_node, import_by in _find_matching_private_imports(
                 node, exclude, predicate.path
@@ -152,45 +173,51 @@ def _evaluate_predicate(
                     + (f' from {predicate.path}' if predicate.path else '')
                     + f' — found in {module_node.file_path}:{import_by.line_no}'
                 )
-        case MustNotImportWithinParent():
-            for module_node, import_by in _find_within_parent_imports(
-                node, exclude, predicate.via
-            ):
-                failures.append(
-                    f'  [scope {scope_label}] must not use {predicate.via} import'
-                    f' within parent package'
-                    f' — found in {module_node.file_path}:{import_by.line_no}'
-                )
+
+
+def _match_target(target: Target, dot_path: DotPath, root_node: RootNode) -> bool:
+    match target:
+        case str():
+            return dot_path.is_relative_to(DotPath(target))
+        case Descendants(path=p):
+            tp = DotPath(p)
+            return dot_path != tp and dot_path.is_relative_to(tp)
+        case Internal():
+            # An import is internal if it resolves to a module under the
+            # configured source roots. Because the parser stores the imported
+            # name as the last part of `dot_path` (so `from pkg.b import x`
+            # yields `pkg.b.x` even when `x` is a symbol, not a submodule), we
+            # check whether any prefix of `dot_path` is a known module.
+            candidate = dot_path
+            while candidate.parts:
+                if root_node.get(candidate) is not None:
+                    return True
+                candidate = candidate.parent
+            return False
+
+
+def _format_target(target: Target) -> str:
+    match target:
+        case str():
+            return target
+        case Descendants(path=p):
+            return f'descendants of {p}'
+        case Internal():
+            return 'any internal module'
 
 
 def _find_matching_imports(
     base_node: ModuleNode,
     exclude: list[DotPath],
-    target_path: DotPath,
+    target: Target,
     via: Via | None,
+    root_node: RootNode,
 ) -> Iterator[tuple[ModuleNode, ImportInModule]]:
     absolute = _via_to_absolute(via)
     for module_node in base_node.walk(exclude=exclude):
         for import_by in module_node.imports:
-            if import_by.dot_path.is_relative_to(target_path) and (
+            if _match_target(target, import_by.dot_path, root_node) and (
                 absolute is None or absolute != bool(import_by.level)
-            ):
-                yield module_node, import_by
-
-
-def _find_within_parent_imports(
-    base_node: ModuleNode,
-    exclude: list[DotPath],
-    via: Via,
-) -> Iterator[tuple[ModuleNode, ImportInModule]]:
-    absolute = via == 'absolute'
-    for module_node in base_node.walk(exclude=exclude):
-        parent = module_node.dot_path.parent
-        if not parent.parts:
-            continue  # top-level modules have no parent package to check
-        for import_by in module_node.imports:
-            if import_by.dot_path.is_relative_to(parent) and absolute != bool(
-                import_by.level
             ):
                 yield module_node, import_by
 
