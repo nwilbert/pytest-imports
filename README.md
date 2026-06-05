@@ -54,7 +54,7 @@ def test_layered_architecture(imports):
         'myapp.api': must_import('myapp.core'),
     })
 ```
-`scope('myapp', without='api')` covers all of `myapp` except `myapp.api` and its descendants. The excluded name can be a subpackage (`api/`) or a `.py` module file (`plugin.py`) — anything that appears as a direct or nested name in the tree. Pass a list to exclude multiple paths: `without=['api', 'adapters']`.
+`scope('myapp', without='api')` covers all of `myapp` except `myapp.api` and its descendants. The excluded name can be a subpackage (`api/`) or a `.py` module file (`plugin.py`) — anything that appears as a direct or nested name in the tree. Pass a list to exclude multiple paths: `without=['api', 'adapters']`. Each entry can also be a dotted path into a deeper subtree, e.g. `without='db.migrations'` excludes only `myapp.db.migrations` (and its descendants) while leaving the rest of `myapp.db` in scope.
 
 <a id="example-via"></a>
 ```python
@@ -111,6 +111,20 @@ def test_internal_imports_are_relative(imports):
 `internal()` is a target helper that matches every import whose target resolves to a module under the configured source roots. Combined with `via='absolute'` this enforces project-wide that all internal imports are written as relative imports — e.g. `from .aaa import ...` rather than `from myapp.core.aaa import ...`. Unlike a parent-package-only check, this also flags an absolute import of `myapp.other` from `myapp.core.bbb`.
 
 Note: This is similar to ruff's [TID252 (relative-imports)](https://docs.astral.sh/ruff/rules/relative-imports/#relative-imports-tid252) rule, but works in the opposite direction — TID252 bans relative imports in favor of absolute ones, while `must_not_import(internal(), via='absolute')` bans absolute internal imports in favor of relative ones.
+
+### Reporting violations without failing
+
+For dashboards, ratchets, or benchmarks, use `imports.violations(rules)` instead of `imports.check(rules)`. It accepts the same rules dictionary and returns the list of violation messages without raising:
+
+```python
+def test_track_legacy_couplings(imports):
+    failures = imports.violations({
+        'myapp.api': must_not_import('myapp.legacy'),
+    })
+    print(f'{len(failures)} legacy coupling(s) remain')
+```
+
+`check()` is `violations()` plus an `AssertionError` on non-empty output, so both report the same messages.
 
 ## Details
 

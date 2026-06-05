@@ -37,9 +37,23 @@ class ImportsFixture:
 
         Raises AssertionError listing all violations if any rules fail.
         """
-        failures = evaluate_rules(self._root_node, rules)
+        failures = self.violations(rules)
         if failures:
             raise AssertionError('Import rule violations:\n' + '\n'.join(failures))
+
+    def violations(
+        self, rules: dict[str | Scope, Predicate | list[Predicate]]
+    ) -> list[str]:
+        """
+        Evaluate a set of import rules and return all violation messages.
+
+        Unlike `check`, this never raises — use it when you want to
+        report or count violations without failing a test (e.g.
+        benchmarks, dashboards, ratchets). The returned list contains
+        the same messages that `check` would assemble into its
+        `AssertionError`.
+        """
+        return evaluate_rules(self._root_node, rules)
 
 
 @pytest.fixture(scope='session')

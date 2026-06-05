@@ -55,6 +55,30 @@ def test_check_scope_without(imports):
 
 @pytest.mark.parametrize(
     'project_structure',
+    [
+        {
+            'r': {
+                'a.py': 'import a_imp',
+                'b': {
+                    'c.py': 'import c_imp',
+                    'd.py': 'import d_imp',
+                },
+            }
+        }
+    ],
+)
+def test_check_scope_without_nested_path(imports):
+    """`without=` accepts dotted nested paths, not just direct submodule names."""
+    # `without='b.c'` excludes r.b.c only — r.a and r.b.d are still in scope.
+    imports.check({scope('r', without='b.c'): must_not_import('c_imp')})
+    with pytest.raises(AssertionError, match='a.py'):
+        imports.check({scope('r', without='b.c'): must_not_import('a_imp')})
+    with pytest.raises(AssertionError, match='d.py'):
+        imports.check({scope('r', without='b.c'): must_not_import('d_imp')})
+
+
+@pytest.mark.parametrize(
+    'project_structure',
     [{'r': {'a.py': 'import x', 'b.py': 'import y'}}],
 )
 def test_check_collects_all_failures(imports):
@@ -135,3 +159,39 @@ def test_check_project_scope(imports):
     imports.check({project(): must_not_import('d')})
     with pytest.raises(AssertionError):
         imports.check({project(): must_not_import_private()})
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'a.py': 'from b import x'}],
+)
+def test_violations_empty_when_rules_pass(imports):
+    assert imports.violations({'a': must_import('b')}) == []
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'a.py': 'from b import x', 'c.py': 'from b import y'}],
+)
+def test_violations_returns_failure_list_without_raising(imports):
+    failures = imports.violations(
+        {
+            'a': must_not_import('b'),
+            'c': must_not_import('b'),
+        }
+    )
+    assert len(failures) == 2
+    assert all('must not import b' in f for f in failures)
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'a.py': 'from b import x'}],
+)
+def test_violations_matches_check_assertion_content(imports):
+    rules = {'a': must_not_import('b')}
+    failures = imports.violations(rules)
+    with pytest.raises(AssertionError) as exc_info:
+        imports.check(rules)
+    for failure in failures:
+        assert failure in str(exc_info.value)
