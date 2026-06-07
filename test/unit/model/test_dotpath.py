@@ -60,9 +60,8 @@ def test_dotpath_name():
     assert DotPath('a.bb').name == 'bb'
 
 
-def test_dotpath_name_index_error():
-    with pytest.raises(IndexError):
-        _ = DotPath().name
+def test_dotpath_name_empty():
+    assert DotPath().name == ''
 
 
 @pytest.mark.parametrize(

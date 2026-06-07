@@ -209,7 +209,7 @@ class DotPath:
 
     @property
     def name(self) -> str:
-        return self._parts[-1]
+        return self._parts[-1] if self._parts else ''
 
     @property
     def parent(self) -> DotPath:
