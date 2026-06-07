@@ -28,7 +28,7 @@ def build_import_model(base_paths: Sequence[Path]) -> RootNode:
             node = root_node.get_or_add(dot_path, module_path)
             imports = _collect_imports(module_ast, dot_path)
             if module_path.name == '__init__.py':
-                node.add_data_for_init_file(imports)
+                node.add_data_for_init_file(module_path, imports)
             else:
                 node.add_imports(imports)
     return root_node

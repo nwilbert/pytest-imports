@@ -128,15 +128,18 @@ class ModuleNode(RootNode):
     def add_imports(self, imports: Iterable[ImportInModule]) -> None:
         self._imports += imports
 
-    def add_data_for_init_file(self, imports: Iterable[ImportInModule]) -> None:
+    def add_data_for_init_file(
+        self, init_file_path: Path, imports: Iterable[ImportInModule]
+    ) -> None:
         """Turn a directory node into a package node,
         with data from the `__init__.py` file.
 
-        There is no separate node for the `__init__.py` file.
+        There is no separate node for the `__init__.py` file. If the
+        node already carried a non-package `.py` file path (a rare
+        name collision between `pkg.py` and `pkg/__init__.py`), the
+        package wins.
         """
-        if self._file_path.name != '__init__.py':
-            assert not self._file_path.suffix
-            self._file_path /= '__init__.py'
+        self._file_path = init_file_path
         self.add_imports(imports)
 
     def _child_dotpath(self, name: str) -> DotPath:

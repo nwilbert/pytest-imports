@@ -94,9 +94,20 @@ def test_node_for_init_file():
     node = ModuleNode('x', DotPath('x'), Path('foobar'))
     assert node.file_path.name == 'foobar'
     assert len(node.imports) == 0
-    node.add_data_for_init_file(imports)
+    init_path = Path('foobar') / '__init__.py'
+    node.add_data_for_init_file(init_path, imports)
     assert len(node.imports) == 2
-    assert node.file_path == Path('foobar') / '__init__.py'
+    assert node.file_path == init_path
+
+
+def test_node_for_init_file_overrides_colliding_py_file():
+    """If a node was first registered for a same-named .py file
+    (e.g. project has both pkg.py and pkg/__init__.py), the package
+    wins when its __init__.py is added."""
+    node = ModuleNode('pkg', DotPath('pkg'), Path('pkg.py'))
+    init_path = Path('pkg') / '__init__.py'
+    node.add_data_for_init_file(init_path, [])
+    assert node.file_path == init_path
 
 
 def test_node_walk():
