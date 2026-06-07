@@ -1,6 +1,6 @@
 import pytest
 
-from pytest_imports.model import DotPath
+from pytest_imports.model import DotPath, RootNode
 from pytest_imports.query import (
     Descendants,
     Internal,
@@ -233,14 +233,14 @@ def test_find_matching_imports_internal_absolute_via(imports_root_node):
 
 
 def test_match_target_string():
-    root = type('R', (), {'get': lambda self, p: None})()
+    root = RootNode()
     assert _match_target('foo', DotPath('foo'), root)
     assert _match_target('foo', DotPath('foo.bar'), root)
     assert not _match_target('foo', DotPath('bar'), root)
 
 
 def test_match_target_descendants():
-    root = type('R', (), {'get': lambda self, p: None})()
+    root = RootNode()
     assert not _match_target(descendants('foo'), DotPath('foo'), root)
     assert _match_target(descendants('foo'), DotPath('foo.bar'), root)
     assert not _match_target(descendants('foo'), DotPath('bar'), root)
