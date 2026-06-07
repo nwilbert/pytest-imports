@@ -143,7 +143,7 @@ class ModuleNode(RootNode):
         return self._dot_path / name
 
 
-@dataclass
+@dataclass(frozen=True)
 class ImportInModule:
     """Represents a single import in a module.
 
