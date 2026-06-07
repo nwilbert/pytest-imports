@@ -49,15 +49,19 @@ def evaluate_rules(
         exclude: list[DotPath] = [DotPath(s) for s in scope_key.without]
         predicate_list = predicates if isinstance(predicates, list) else [predicates]
 
+        scope_label = scope_path or '<project>'
+
         if scope_path is None:
             nodes: list[ModuleNode] = root_node.children()
         else:
             node = root_node.get(DotPath(scope_path))
             if not node:
-                raise KeyError(f'Found no node for path {scope_path} in project.')
+                failures.append(
+                    f'  [scope {scope_label}] unknown scope'
+                    f' — no module found for path {scope_path}'
+                )
+                continue
             nodes = [node]
-
-        scope_label = scope_path or '<project>'
 
         for node in nodes:
             for predicate in predicate_list:

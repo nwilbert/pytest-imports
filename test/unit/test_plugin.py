@@ -102,8 +102,25 @@ def test_check_list_of_predicates(imports):
     [{'a.py': ''}],
 )
 def test_check_module_not_found(imports):
-    with pytest.raises(KeyError):
+    with pytest.raises(AssertionError, match='unknown scope'):
         imports.check({scope('foobar'): must_not_import('x')})
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'a.py': 'from b import x'}],
+)
+def test_check_unknown_scope_does_not_abort_remaining_rules(imports):
+    """An unknown scope is reported as a failure but other rules still run."""
+    failures = imports.violations(
+        {
+            scope('does_not_exist'): must_not_import('b'),
+            scope('a'): must_not_import('b'),
+        }
+    )
+    assert len(failures) == 2
+    assert any('unknown scope' in f and 'does_not_exist' in f for f in failures)
+    assert any('must not import b' in f for f in failures)
 
 
 @pytest.mark.parametrize(
