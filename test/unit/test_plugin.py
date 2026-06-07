@@ -28,6 +28,21 @@ def test_check_must_import_fails(imports):
 
 @pytest.mark.parametrize(
     'project_structure',
+    [{'r': {'a.py': '', 'b.py': '', 'c.py': ''}}],
+)
+def test_check_must_import_emits_one_message_per_failing_rule(imports):
+    """A failing must_import rule on a scope of N files reports once, not N times.
+
+    The rule is satisfied if any descendant in scope imports the target,
+    so a failure is a single scope-level fact.
+    """
+    failures = imports.violations({scope('r'): must_import('x')})
+    assert len(failures) == 1
+    assert 'must import x' in failures[0]
+
+
+@pytest.mark.parametrize(
+    'project_structure',
     [{'a.py': 'from b import x'}],
 )
 def test_check_must_not_import_passes(imports):

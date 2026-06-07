@@ -145,12 +145,10 @@ def _evaluate_predicate(
                     node, exclude, predicate.path, predicate.via, root_node
                 )
             ):
-                for module_node in node.walk(exclude=exclude):
-                    if module_node.file_path.suffix == '.py':
-                        failures.append(
-                            f'  [scope {scope_label}] must import {target_str}'
-                            f' — no matching import in {module_node.file_path}'
-                        )
+                failures.append(
+                    f'  [scope {scope_label}] must import {target_str}'
+                    f' — no matching import found'
+                )
         case MustNotImport():
             target_str = _format_target(predicate.path)
             for module_node, import_by in _find_matching_imports(

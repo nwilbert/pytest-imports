@@ -14,7 +14,8 @@ def test_explain_must_import_fail(pytester):
         if line.lstrip().startswith('E') and 'no matching import' in line
     ]
     assert len(explanation_lines) == 1
-    assert 'foo.py' in explanation_lines[0]
+    assert 'must import bar' in explanation_lines[0]
+    assert 'scope foo' in explanation_lines[0]
 
 
 def test_explain_must_not_import_fail(pytester):

@@ -41,9 +41,7 @@ class ImportsFixture:
         if failures:
             raise AssertionError('Import rule violations:\n' + '\n'.join(failures))
 
-    def violations(
-        self, rules: dict[Scope, Predicate | list[Predicate]]
-    ) -> list[str]:
+    def violations(self, rules: dict[Scope, Predicate | list[Predicate]]) -> list[str]:
         """
         Evaluate a set of import rules and return all violation messages.
 
