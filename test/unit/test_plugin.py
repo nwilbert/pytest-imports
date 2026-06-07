@@ -123,6 +123,15 @@ def test_check_module_not_found(imports):
 
 @pytest.mark.parametrize(
     'project_structure',
+    [{'a.py': ''}],
+)
+def test_check_empty_string_scope_reported_as_unknown(imports):
+    with pytest.raises(AssertionError, match='unknown scope'):
+        imports.check({scope(''): must_not_import('x')})
+
+
+@pytest.mark.parametrize(
+    'project_structure',
     [{'a.py': 'from b import x'}],
 )
 def test_check_unknown_scope_does_not_abort_remaining_rules(imports):
