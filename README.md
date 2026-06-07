@@ -7,12 +7,12 @@ The idea is to write automated tests for the architecture aspects of your Python
 
 ### Simple example
 ```python
-from pytest_imports import must_import, must_not_import
+from pytest_imports import must_import, must_not_import, scope
 
 def test_imports(imports):
     imports.check({
-        'foo': must_import('bar'),
-        'baz': must_not_import('qux'),
+        scope('foo'): must_import('bar'),
+        scope('baz'): must_not_import('qux'),
     })
 ```
 This checks that module `foo` imports `bar`, and that module `baz` does not import `qux`.
@@ -51,7 +51,7 @@ from pytest_imports import must_import, must_not_import, scope
 def test_layered_architecture(imports):
     imports.check({
         scope('myapp', without='api'): must_not_import('myapp.api'),
-        'myapp.api': must_import('myapp.core'),
+        scope('myapp.api'): must_import('myapp.core'),
     })
 ```
 `scope('myapp', without='api')` covers all of `myapp` except `myapp.api` and its descendants. The excluded name can be a subpackage (`api/`) or a `.py` module file (`plugin.py`) — anything that appears as a direct or nested name in the tree. Pass a list to exclude multiple paths: `without=['api', 'adapters']`. Each entry can also be a dotted path into a deeper subtree, e.g. `without='db.migrations'` excludes only `myapp.db.migrations` (and its descendants) while leaving the rest of `myapp.db` in scope.
@@ -119,7 +119,7 @@ For dashboards, ratchets, or benchmarks, use `imports.violations(rules)` instead
 ```python
 def test_track_legacy_couplings(imports):
     failures = imports.violations({
-        'myapp.api': must_not_import('myapp.legacy'),
+        scope('myapp.api'): must_not_import('myapp.legacy'),
     })
     print(f'{len(failures)} legacy coupling(s) remain')
 ```

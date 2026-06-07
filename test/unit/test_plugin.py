@@ -14,7 +14,7 @@ from pytest_imports import (
     [{'a.py': 'from b import x'}],
 )
 def test_check_must_import_passes(imports):
-    imports.check({'a': must_import('b.x')})
+    imports.check({scope('a'): must_import('b.x')})
 
 
 @pytest.mark.parametrize(
@@ -23,7 +23,7 @@ def test_check_must_import_passes(imports):
 )
 def test_check_must_import_fails(imports):
     with pytest.raises(AssertionError, match='must import'):
-        imports.check({'a': must_import('c')})
+        imports.check({scope('a'): must_import('c')})
 
 
 @pytest.mark.parametrize(
@@ -31,7 +31,7 @@ def test_check_must_import_fails(imports):
     [{'a.py': 'from b import x'}],
 )
 def test_check_must_not_import_passes(imports):
-    imports.check({'a': must_not_import('c')})
+    imports.check({scope('a'): must_not_import('c')})
 
 
 @pytest.mark.parametrize(
@@ -40,7 +40,7 @@ def test_check_must_not_import_passes(imports):
 )
 def test_check_must_not_import_fails(imports):
     with pytest.raises(AssertionError, match='must not import'):
-        imports.check({'a': must_not_import('b')})
+        imports.check({scope('a'): must_not_import('b')})
 
 
 @pytest.mark.parametrize(
@@ -83,7 +83,7 @@ def test_check_scope_without_nested_path(imports):
 )
 def test_check_collects_all_failures(imports):
     with pytest.raises(AssertionError) as exc_info:
-        imports.check({'r': [must_not_import('x'), must_not_import('y')]})
+        imports.check({scope('r'): [must_not_import('x'), must_not_import('y')]})
     msg = str(exc_info.value)
     assert 'a.py' in msg
     assert 'b.py' in msg
@@ -94,7 +94,7 @@ def test_check_collects_all_failures(imports):
     [{'a.py': 'from b import x'}],
 )
 def test_check_list_of_predicates(imports):
-    imports.check({'a': [must_import('b'), must_not_import('c')]})
+    imports.check({scope('a'): [must_import('b'), must_not_import('c')]})
 
 
 @pytest.mark.parametrize(
@@ -103,7 +103,7 @@ def test_check_list_of_predicates(imports):
 )
 def test_check_module_not_found(imports):
     with pytest.raises(KeyError):
-        imports.check({'foobar': must_not_import('x')})
+        imports.check({scope('foobar'): must_not_import('x')})
 
 
 @pytest.mark.parametrize(
@@ -118,10 +118,10 @@ def test_check_module_not_found(imports):
     ],
 )
 def test_check_via(imports):
-    imports.check({'a.b': must_not_import('a.x', via='absolute')})
-    imports.check({'a.d': must_not_import('x', via='relative')})
+    imports.check({scope('a.b'): must_not_import('a.x', via='absolute')})
+    imports.check({scope('a.d'): must_not_import('x', via='relative')})
     with pytest.raises(AssertionError):
-        imports.check({'a.b': must_not_import('a.x', via='relative')})
+        imports.check({scope('a.b'): must_not_import('a.x', via='relative')})
 
 
 @pytest.mark.parametrize(
@@ -129,7 +129,7 @@ def test_check_via(imports):
     [{'a.py': 'from b import x'}],
 )
 def test_check_must_not_import_private_passes(imports):
-    imports.check({'a': must_not_import_private()})
+    imports.check({scope('a'): must_not_import_private()})
 
 
 @pytest.mark.parametrize(
@@ -138,7 +138,7 @@ def test_check_must_not_import_private_passes(imports):
 )
 def test_check_must_not_import_private_fails(imports):
     with pytest.raises(AssertionError, match='must not import private'):
-        imports.check({'a': must_not_import_private()})
+        imports.check({scope('a'): must_not_import_private()})
 
 
 @pytest.mark.parametrize(
@@ -146,9 +146,9 @@ def test_check_must_not_import_private_fails(imports):
     [{'a.py': 'from b import _x\nfrom c import _y'}],
 )
 def test_check_must_not_import_private_with_path(imports):
-    imports.check({'a': must_not_import_private('c2')})
+    imports.check({scope('a'): must_not_import_private('c2')})
     with pytest.raises(AssertionError):
-        imports.check({'a': must_not_import_private('b')})
+        imports.check({scope('a'): must_not_import_private('b')})
 
 
 @pytest.mark.parametrize(
@@ -166,7 +166,7 @@ def test_check_project_scope(imports):
     [{'a.py': 'from b import x'}],
 )
 def test_violations_empty_when_rules_pass(imports):
-    assert imports.violations({'a': must_import('b')}) == []
+    assert imports.violations({scope('a'): must_import('b')}) == []
 
 
 @pytest.mark.parametrize(
@@ -176,8 +176,8 @@ def test_violations_empty_when_rules_pass(imports):
 def test_violations_returns_failure_list_without_raising(imports):
     failures = imports.violations(
         {
-            'a': must_not_import('b'),
-            'c': must_not_import('b'),
+            scope('a'): must_not_import('b'),
+            scope('c'): must_not_import('b'),
         }
     )
     assert len(failures) == 2
@@ -189,7 +189,7 @@ def test_violations_returns_failure_list_without_raising(imports):
     [{'a.py': 'from b import x'}],
 )
 def test_violations_matches_check_assertion_content(imports):
-    rules = {'a': must_not_import('b')}
+    rules = {scope('a'): must_not_import('b')}
     failures = imports.violations(rules)
     with pytest.raises(AssertionError) as exc_info:
         imports.check(rules)

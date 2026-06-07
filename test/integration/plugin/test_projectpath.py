@@ -109,12 +109,12 @@ def test_multiple_project_paths(pytester):
         ]
     """)
     pytester.makepyfile("""
-        from pytest_imports import must_import, must_not_import
+        from pytest_imports import must_import, must_not_import, scope
 
         def test_arch(imports):
             imports.check({
-                'foo.a': must_import('bar.b'),
-                'bar.b': must_not_import('foo'),
+                scope('foo.a'): must_import('bar.b'),
+                scope('bar.b'): must_not_import('foo'),
             })
     """)
     result = pytester.runpytest()

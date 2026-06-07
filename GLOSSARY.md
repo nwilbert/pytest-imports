@@ -81,8 +81,8 @@ use these words less rigorously and can read as if `submodule` and
 
 ## Rule vocabulary
 
-- **scope** — The set of modules a rule applies to. Created via `scope(...)`,
-  the bare string form (`'foo'`), or `project()` for the whole project.
+- **scope** — The set of modules a rule applies to. Created via `scope(...)`
+  or `project()` for the whole project.
 - **predicate** — A rule object (`MustImport`, `MustNotImport`,
   `MustNotImportPrivate`, …) applied to a scope. Built via factory
   functions like `must_import` and `must_not_import`.

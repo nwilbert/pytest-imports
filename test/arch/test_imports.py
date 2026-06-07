@@ -16,9 +16,9 @@ def test_internal_dependencies(imports):
                 must_not_import('pytest_imports.query'),
                 must_not_import('pytest_imports.plugin'),
             ],
-            'pytest_imports.plugin': must_import('pytest_imports.model'),
-            'pytest_imports.query': must_import('pytest_imports.model'),
-            'pytest_imports.parser': must_import('pytest_imports.model'),
+            scope('pytest_imports.plugin'): must_import('pytest_imports.model'),
+            scope('pytest_imports.query'): must_import('pytest_imports.model'),
+            scope('pytest_imports.parser'): must_import('pytest_imports.model'),
         }
     )
 

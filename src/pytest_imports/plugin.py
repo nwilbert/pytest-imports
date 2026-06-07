@@ -30,7 +30,7 @@ class ImportsFixture:
     def __init__(self, imports_root_node: RootNode):
         self._root_node = imports_root_node
 
-    def check(self, rules: dict[str | Scope, Predicate | list[Predicate]]) -> None:
+    def check(self, rules: dict[Scope, Predicate | list[Predicate]]) -> None:
         """
         Check a set of import rules, each mapping a scope to one or more
         predicates.
@@ -42,7 +42,7 @@ class ImportsFixture:
             raise AssertionError('Import rule violations:\n' + '\n'.join(failures))
 
     def violations(
-        self, rules: dict[str | Scope, Predicate | list[Predicate]]
+        self, rules: dict[Scope, Predicate | list[Predicate]]
     ) -> list[str]:
         """
         Evaluate a set of import rules and return all violation messages.

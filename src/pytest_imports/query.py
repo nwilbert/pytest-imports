@@ -40,17 +40,13 @@ def must_not_import_private(path: str | None = None) -> MustNotImportPrivate:
 
 def evaluate_rules(
     root_node: RootNode,
-    rules: dict[str | Scope, Predicate | list[Predicate]],
+    rules: dict[Scope, Predicate | list[Predicate]],
 ) -> list[str]:
     """Evaluate all rules and return a list of human-readable failure messages."""
     failures: list[str] = []
     for scope_key, predicates in rules.items():
-        match scope_key:
-            case str():
-                scope_path = scope_key
-                exclude: list[DotPath] = []
-            case Scope(path=scope_path, without=without):
-                exclude = [DotPath(s) for s in without]
+        scope_path = scope_key.path
+        exclude: list[DotPath] = [DotPath(s) for s in scope_key.without]
         predicate_list = predicates if isinstance(predicates, list) else [predicates]
 
         if scope_path is None:

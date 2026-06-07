@@ -1,10 +1,10 @@
 def test_explain_must_import_fail(pytester):
     pytester.makepyfile(foo='import fizz')
     pytester.makepyfile("""
-        from pytest_imports import must_import
+        from pytest_imports import must_import, scope
 
         def test_arch(imports):
-            imports.check({'foo': must_import('bar')})
+            imports.check({scope('foo'): must_import('bar')})
     """)
     result = pytester.runpytest()
     result.assert_outcomes(failed=1)
@@ -25,10 +25,10 @@ def test_explain_must_not_import_fail(pytester):
     """
     )
     pytester.makepyfile("""
-        from pytest_imports import must_not_import
+        from pytest_imports import must_not_import, scope
 
         def test_arch(imports):
-            imports.check({'foobar': must_not_import('foo.bar')})
+            imports.check({scope('foobar'): must_not_import('foo.bar')})
     """)
     result = pytester.runpytest()
     result.assert_outcomes(failed=1)
