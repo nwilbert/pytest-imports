@@ -57,7 +57,7 @@ class ModuleNode(RootNode):
     Such a node carries no imports.
     """
 
-    def __init__(self, name: str, full_dotpath: DotPath, file_path: Path):
+    def __init__(self, name: str, full_dotpath: DotPath, file_path: Path) -> None:
         super().__init__()
         self._name: str = name
         self._dot_path: DotPath = full_dotpath
