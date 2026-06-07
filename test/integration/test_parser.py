@@ -209,6 +209,31 @@ def test_utf8_encoded_source_is_handled(tmp_path: Path):
     assert node.get(DotPath('a')).imports == [ImportInModule(DotPath('x'), 2)]
 
 
+@pytest.mark.parametrize(
+    'project_structure',
+    [
+        {
+            'pkg': {
+                '__init__.py': '',
+                'sub.py': 'import collision_module',
+                'sub': {'__init__.py': 'import package_import'},
+            }
+        }
+    ],
+)
+def test_package_shadows_same_named_module(project_path: Path, caplog):
+    with caplog.at_level(logging.WARNING):
+        node = build_import_model([project_path])
+    sub = node.get(DotPath('pkg.sub'))
+    assert sub is not None
+    assert sub.file_path == project_path / 'pkg' / 'sub' / '__init__.py'
+    assert sub.imports == [ImportInModule(DotPath('package_import'), 1)]
+    assert any(
+        'sub.py' in record.message and record.levelno == logging.WARNING
+        for record in caplog.records
+    )
+
+
 def test_syntax_error_is_skipped_with_warning(tmp_path: Path, caplog):
     """A file that fails to parse is skipped — it does not abort the model build."""
     (tmp_path / 'broken.py').write_text('1invalid_token = 2\n')

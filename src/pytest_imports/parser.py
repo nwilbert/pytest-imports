@@ -79,4 +79,11 @@ def _walk_modules(base_path: Path) -> Generator[tuple[Path, bytes], None, None]:
         relative_parts = path.relative_to(base_path).parts
         if any(part.startswith('.') for part in relative_parts):
             continue
+        if path.name != '__init__.py' and path.with_suffix('').is_dir():
+            # Python prefers the package when `pkg/sub.py` and `pkg/sub/`
+            # coexist; skip the file so both don't share one node.
+            log.warning(
+                f'Skipping {path}: a package of the same name exists alongside it.'
+            )
+            continue
         yield path, path.read_bytes()
