@@ -87,6 +87,36 @@ def test_import_from_init(project_path):
     ('project_structure', 'path', 'import_obj'),
     [
         (
+            {'pkg': {'__init__.py': 'from . import y'}},
+            'pkg',
+            ImportInModule(dot_path=DotPath('pkg.y'), line_no=1, level=1),
+        ),
+        (
+            {'pkg': {'__init__.py': 'from .x import y'}},
+            'pkg',
+            ImportInModule(dot_path=DotPath('pkg.x.y'), line_no=1, level=1),
+        ),
+        (
+            {'pkg': {'sub': {'__init__.py': 'from . import y'}}},
+            'pkg.sub',
+            ImportInModule(dot_path=DotPath('pkg.sub.y'), line_no=1, level=1),
+        ),
+        (
+            {'pkg': {'sub': {'__init__.py': 'from .. import y'}}},
+            'pkg.sub',
+            ImportInModule(dot_path=DotPath('pkg.y'), line_no=1, level=2),
+        ),
+    ],
+)
+def test_relative_import_in_init(project_path: Path, path: str, import_obj):
+    base_node = build_import_model([project_path])
+    assert base_node.get(DotPath(path)).imports == [import_obj]
+
+
+@pytest.mark.parametrize(
+    ('project_structure', 'path', 'import_obj'),
+    [
+        (
             {
                 'a': {'b.py': 'import x'},
             },

@@ -26,8 +26,10 @@ def build_import_model(base_paths: Sequence[Path]) -> RootNode:
                 continue
             dot_path = DotPath.from_path(module_path.relative_to(base_path))
             node = root_node.get_or_add(dot_path, module_path)
-            imports = _collect_imports(module_ast, dot_path)
-            if module_path.name == '__init__.py':
+            is_init = module_path.name == '__init__.py'
+            package_path = dot_path if is_init else dot_path.parent
+            imports = _collect_imports(module_ast, package_path)
+            if is_init:
                 node.add_data_for_init_file(module_path, imports)
             else:
                 node.add_imports(imports)
@@ -35,7 +37,7 @@ def build_import_model(base_paths: Sequence[Path]) -> RootNode:
 
 
 def _collect_imports(
-    module_ast: ast.Module, node_path: DotPath
+    module_ast: ast.Module, package_path: DotPath
 ) -> Sequence[ImportInModule]:
     imports: list[ImportInModule] = []
     for ast_node in ast.walk(module_ast):
@@ -55,14 +57,16 @@ def _collect_imports(
                     else:
                         from_path = DotPath()
                     if (level := ast_import_from.level) > 0:
-                        if level > len(node_path.parts):
+                        anchor_depth = len(package_path.parts) - (level - 1)
+                        if anchor_depth < 0:
                             log.warning(
-                                f'Skipping import from {node_path} because '
+                                f'Skipping import from {package_path} because '
                                 f'relative import level goes beyond project.'
                             )
                             continue
-                        else:
-                            from_path = DotPath(node_path.parts[:-level]) / from_path
+                        from_path = (
+                            DotPath(package_path.parts[:anchor_depth]) / from_path
+                        )
                     from_path /= alias.name
                     imports.append(
                         ImportInModule(

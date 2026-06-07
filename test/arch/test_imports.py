@@ -11,9 +11,17 @@ from pytest_imports import (
 def test_internal_dependencies(imports):
     imports.check(
         {
-            scope('pytest_imports', without='plugin'): [
+            scope('pytest_imports.model'): [
                 must_not_import('pytest_imports.parser'),
                 must_not_import('pytest_imports.query'),
+                must_not_import('pytest_imports.plugin'),
+            ],
+            scope('pytest_imports.parser'): [
+                must_not_import('pytest_imports.query'),
+                must_not_import('pytest_imports.plugin'),
+            ],
+            scope('pytest_imports.query'): [
+                must_not_import('pytest_imports.parser'),
                 must_not_import('pytest_imports.plugin'),
             ],
             scope('pytest_imports.plugin'): must_import('pytest_imports.model'),
