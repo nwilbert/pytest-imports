@@ -87,9 +87,13 @@ use these words less rigorously and can read as if `submodule` and
   `MustNotImportPrivate`, …) applied to a scope. Built via factory
   functions like `must_import` and `must_not_import`.
 - **target** — An import target selector accepted by `must_import` and
-  `must_not_import`: a dotted path string, or one of the helpers
+  `must_not_import`: a dotted path string, or one of the constructors
   `descendants(p)` (descendants of `p`, excluding `p` itself) or
-  `internal()` (any module under the configured source roots).
+  `internal()` (any module under the configured source roots). A bare
+  dotted-path string is a **string target**; `descendants(...)` and
+  `internal()` produce **structured targets** (the `Descendants` and
+  `Internal` dataclasses). Use these two sub-terms when the distinction
+  matters; both are targets.
 - **project** — The full set of modules under the configured source
   roots. Returned by `project()` as a special scope. Whether this
   includes a `test/` or `tests/` directory depends on layout: with a

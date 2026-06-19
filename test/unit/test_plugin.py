@@ -1,9 +1,12 @@
 import pytest
 
 from pytest_imports import (
+    descendants,
+    internal,
     must_import,
     must_not_import,
     must_not_import_private,
+    must_only_import,
     project,
     scope,
 )
@@ -39,6 +42,55 @@ def test_check_must_import_emits_one_message_per_failing_rule(imports):
     failures = imports.violations({scope('r'): must_import('x')})
     assert len(failures) == 1
     assert 'must import x' in failures[0]
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'r': {'a.py': 'import x'}}],
+)
+def test_check_must_import_list_and_semantics(imports):
+    # Conjunctive: x is present, y is missing → one failure for y only.
+    imports.check({scope('r'): must_import(['x'])})
+    failures = imports.violations({scope('r'): must_import(['x', 'y'])})
+    assert len(failures) == 1
+    assert 'must import y' in failures[0]
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'m.py': 'import a\nimport a.sub\nimport b\nimport c'}],
+)
+def test_check_must_not_import_list_or_semantics(imports):
+    # Disjunctive: a, a.sub, and b are flagged; c is ignored.
+    failures = imports.violations({scope('m'): must_not_import(['a', 'b'])})
+    assert len(failures) == 3
+    assert all('{a, b}' in f for f in failures)
+    assert any('matching a' in f for f in failures)
+    assert any('matching b' in f for f in failures)
+    assert not any('matching' in f and ' c ' in f for f in failures)
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'m.py': 'import a\nimport a.sub\nimport b'}],
+)
+def test_check_must_not_import_mixed_target_shapes(imports):
+    # descendants('a') matches a.sub (not a); 'b' matches b → 2 failures.
+    failures = imports.violations(
+        {scope('m'): must_not_import([descendants('a'), 'b'])}
+    )
+    assert len(failures) == 2
+    actual = ' '.join(failures)
+    assert 'a.sub' in actual
+    assert 'found b' in actual
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'m.py': 'import a'}],
+)
+def test_check_must_not_import_empty_list_vacuous(imports):
+    assert imports.violations({scope('m'): must_not_import([])}) == []
 
 
 @pytest.mark.parametrize(
@@ -190,6 +242,231 @@ def test_check_must_not_import_private_with_path(imports):
     imports.check({scope('a'): must_not_import_private('c2')})
     with pytest.raises(AssertionError):
         imports.check({scope('a'): must_not_import_private('b')})
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [
+        {
+            'myapp': {'__init__.py': '', 'a.py': 'from myapp._x import y'},
+            'caller.py': 'from external._z import w',
+        }
+    ],
+)
+def test_check_must_not_import_private_internal_filter(imports):
+    # internal() flags the private import of an internal name but ignores
+    # the private import of an external one.
+    failures = imports.violations({project(): must_not_import_private(internal())})
+    assert len(failures) == 1
+    assert 'a.py' in failures[0]
+    assert 'from any internal module' in failures[0]
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [
+        {
+            'myapp': {
+                '__init__.py': '',
+                'capture': {
+                    '__init__.py': '',
+                    'a.py': 'from myapp.capture._x import y',
+                },
+                'other.py': 'from myapp._secret import z',
+            }
+        }
+    ],
+)
+def test_check_must_not_import_private_descendants_filter(imports):
+    # Only private imports under myapp.capture are flagged; the private
+    # import of myapp._secret elsewhere is outside the filter.
+    failures = imports.violations(
+        {project(): must_not_import_private(descendants('myapp.capture'))}
+    )
+    assert len(failures) == 1
+    assert 'a.py' in failures[0]
+    assert 'descendants of myapp.capture' in failures[0]
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'a.py': 'from b import _x\nfrom c import _y\nfrom d import _z'}],
+)
+def test_check_must_not_import_private_list_filter(imports):
+    failures = imports.violations({scope('a'): must_not_import_private(['b', 'c'])})
+    assert len(failures) == 2
+    assert all('from {b, c}' in f for f in failures)
+
+
+def _layered(routes_source: str) -> dict:
+    """A small layered app: api/routes.py plus core/schemas/persistence."""
+    return {
+        'myapp': {
+            'api': {'routes.py': routes_source},
+            'core': {'__init__.py': '', 'detail.py': ''},
+            'schemas': {'__init__.py': ''},
+            'persistence': {'__init__.py': ''},
+            'other': {'__init__.py': ''},
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [
+        _layered(
+            'from myapp.core import service\nfrom myapp.schemas import User\nimport os'
+        )
+    ],
+)
+def test_check_must_only_import_passes(imports):
+    imports.check(
+        {scope('myapp.api'): must_only_import(['myapp.core', 'myapp.schemas'])}
+    )
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [_layered('from myapp.core.detail import X')],
+)
+def test_check_must_only_import_allows_descendant_of_allowed(imports):
+    imports.check({scope('myapp.api'): must_only_import('myapp.core')})
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [_layered('from myapp.persistence import db')],
+)
+def test_check_must_only_import_flags_disallowed_internal(imports):
+    failures = imports.violations(
+        {scope('myapp.api'): must_only_import(['myapp.core', 'myapp.schemas'])}
+    )
+    assert len(failures) == 1
+    assert 'must only import' in failures[0]
+    assert 'among any internal module' in failures[0]
+    assert 'myapp.persistence.db' in failures[0]
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [_layered('import os\nfrom fastapi import APIRouter')],
+)
+def test_check_must_only_import_ignores_external(imports):
+    imports.check({scope('myapp.api'): must_only_import('myapp.core')})
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [_layered('from . import helpers')],
+)
+def test_check_must_only_import_resolves_relative(imports):
+    # `from . import helpers` in myapp.api.routes resolves to
+    # myapp.api.helpers — internal but not allowed → violation.
+    failures = imports.violations({scope('myapp.api'): must_only_import('myapp.core')})
+    assert len(failures) == 1
+    assert 'myapp.api.helpers' in failures[0]
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [_layered('import myapp.core\nfrom myapp.core.detail import X')],
+)
+def test_check_must_only_import_descendants_in_allowed(imports):
+    # descendants('myapp.core') permits myapp.core.detail but flags a
+    # bare import of myapp.core itself.
+    failures = imports.violations(
+        {scope('myapp.api'): must_only_import(descendants('myapp.core'))}
+    )
+    assert len(failures) == 1
+    assert 'myapp.core' in failures[0]
+    assert 'descendants of myapp.core' in failures[0]
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [_layered('from myapp.persistence import db\nimport myapp.other')],
+)
+def test_check_must_only_import_one_failure_per_line(imports):
+    failures = imports.violations({scope('myapp.api'): must_only_import('myapp.core')})
+    assert len(failures) == 2
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [_layered('from myapp.core import x\nfrom myapp.schemas.user import U')],
+)
+def test_check_must_only_import_mixed_target_types(imports):
+    imports.check(
+        {
+            scope('myapp.api'): must_only_import(
+                ['myapp.core', descendants('myapp.schemas')]
+            )
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [_layered('from myapp.persistence import db')],
+)
+def test_check_must_only_import_via_relative_ignores_absolute(imports):
+    # Only relative imports are in the universe; the absolute import of
+    # persistence is outside `via='relative'` → no violation.
+    imports.check({scope('myapp.api'): must_only_import('myapp.core', via='relative')})
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [_layered('from myapp.core import service\nimport os')],
+)
+def test_check_must_only_import_empty_allowlist(imports):
+    failures = imports.violations({scope('myapp.api'): must_only_import([])})
+    assert len(failures) == 1
+    assert 'must not import anything among any internal module' in failures[0]
+    assert 'myapp.core.service' in failures[0]
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [_layered('from myapp.persistence import db')],
+)
+def test_check_must_only_import_vacuous_internal(imports):
+    imports.check({scope('myapp.api'): must_only_import(internal())})
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [
+        {
+            'myapp': {
+                'capture': {
+                    'a.py': (
+                        'from myapp.capture.helper import x\n'
+                        'import os\n'
+                        'from myapp.persistence import db'
+                    ),
+                    'helper.py': '',
+                },
+                'persistence': {'__init__.py': ''},
+            }
+        }
+    ],
+)
+def test_check_must_only_import_among_descendants(imports):
+    # among=descendants('myapp') bounds the universe to myapp.* imports.
+    # Within it only myapp.capture.* is allowed: the capture-internal
+    # import passes, `os` is outside `among` (ignored), and
+    # myapp.persistence is in-universe but disallowed → one violation.
+    failures = imports.violations(
+        {
+            scope('myapp.capture'): must_only_import(
+                descendants('myapp.capture'), among=descendants('myapp')
+            )
+        }
+    )
+    assert len(failures) == 1
+    assert 'myapp.persistence.db' in failures[0]
+    assert 'descendants of myapp' in failures[0]
 
 
 @pytest.mark.parametrize(

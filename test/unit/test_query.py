@@ -6,12 +6,14 @@ from pytest_imports.query import (
     Internal,
     _find_matching_imports,
     _find_matching_private_imports,
+    _format_target,
     _match_target,
     descendants,
     internal,
     must_import,
     must_not_import,
     must_not_import_private,
+    must_only_import,
     project,
     scope,
 )
@@ -45,8 +47,13 @@ def test_project_hashable():
 
 def test_must_import_defaults():
     p = must_import('foo.bar')
-    assert p.path == 'foo.bar'
+    assert p.path == ('foo.bar',)
     assert p.via is None
+
+
+def test_must_import_list_of_targets():
+    p = must_import(['a', 'b'])
+    assert p.path == ('a', 'b')
 
 
 def test_must_import_via():
@@ -56,18 +63,56 @@ def test_must_import_via():
 
 def test_must_not_import_defaults():
     p = must_not_import('foo.bar')
-    assert p.path == 'foo.bar'
+    assert p.path == ('foo.bar',)
     assert p.via is None
+
+
+def test_must_not_import_list_of_targets():
+    p = must_not_import([descendants('a'), 'b'])
+    assert p.path == (Descendants(path='a'), 'b')
 
 
 def test_must_not_import_private_defaults():
     p = must_not_import_private()
-    assert p.path is None
+    assert p.path == ()
 
 
 def test_must_not_import_private_with_path():
     p = must_not_import_private('foo')
-    assert p.path == 'foo'
+    assert p.path == ('foo',)
+
+
+def test_must_not_import_private_accepts_structured_target():
+    p = must_not_import_private(internal())
+    assert p.path == (Internal(),)
+
+
+def test_must_not_import_private_list_of_targets():
+    p = must_not_import_private(['a', descendants('b')])
+    assert p.path == ('a', Descendants(path='b'))
+
+
+def test_must_only_import_single_target_normalized():
+    p = must_only_import('foo.core')
+    assert p.allowed == ('foo.core',)
+    assert p.among == Internal()
+    assert p.via is None
+
+
+def test_must_only_import_list_of_targets():
+    p = must_only_import(['foo.core', 'foo.schemas'])
+    assert p.allowed == ('foo.core', 'foo.schemas')
+
+
+def test_must_only_import_accepts_structured_targets():
+    p = must_only_import(descendants('foo.core'))
+    assert p.allowed == (Descendants(path='foo.core'),)
+
+
+def test_must_only_import_among_and_via():
+    p = must_only_import('foo.core', among=descendants('foo'), via='relative')
+    assert p.among == Descendants(path='foo')
+    assert p.via == 'relative'
 
 
 def test_descendants_factory():
@@ -76,18 +121,32 @@ def test_descendants_factory():
     assert d.path == 'foo.bar'
 
 
+def test_descendants_without_single_string():
+    d = descendants('foo.bar', without='baz')
+    assert d.without == ('baz',)
+
+
+def test_descendants_without_list():
+    d = descendants('foo', without=['a', 'b'])
+    assert d.without == ('a', 'b')
+
+
+def test_descendants_without_defaults_empty():
+    assert descendants('foo').without == ()
+
+
 def test_internal_factory():
     assert internal() == Internal()
 
 
 def test_must_import_accepts_descendants():
     p = must_import(descendants('foo'))
-    assert p.path == Descendants(path='foo')
+    assert p.path == (Descendants(path='foo'),)
 
 
 def test_must_not_import_accepts_internal():
     p = must_not_import(internal(), via='absolute')
-    assert p.path == Internal()
+    assert p.path == (Internal(),)
     assert p.via == 'absolute'
 
 
@@ -246,6 +305,40 @@ def test_match_target_descendants():
     assert not _match_target(descendants('foo'), DotPath('bar'), root)
 
 
+def test_match_target_descendants_without_single():
+    root = RootNode()
+    d = descendants('a', without='b')
+    assert _match_target(d, DotPath('a.c'), root)
+    assert not _match_target(d, DotPath('a.b'), root)
+    assert not _match_target(d, DotPath('a.b.c'), root)
+
+
+def test_match_target_descendants_without_list():
+    root = RootNode()
+    d = descendants('a', without=['b', 'd'])
+    assert _match_target(d, DotPath('a.c'), root)
+    assert not _match_target(d, DotPath('a.b'), root)
+    assert not _match_target(d, DotPath('a.d'), root)
+
+
+def test_match_target_descendants_without_nested_path():
+    root = RootNode()
+    d = descendants('a', without='b.x')
+    assert _match_target(d, DotPath('a.b.y'), root)
+    assert not _match_target(d, DotPath('a.b.x'), root)
+    assert not _match_target(d, DotPath('a.b.x.z'), root)
+
+
+def test_format_target_descendants_without():
+    assert _format_target(descendants('a', without='b')) == (
+        'descendants of a except {b}'
+    )
+    assert _format_target(descendants('a', without=['b', 'c'])) == (
+        'descendants of a except {b, c}'
+    )
+    assert _format_target(descendants('a')) == 'descendants of a'
+
+
 @pytest.mark.parametrize(
     'project_structure',
     [{'a.py': '', 'b.py': ''}],
@@ -262,7 +355,7 @@ def test_match_target_internal(imports_root_node):
 )
 def test_find_matching_private_imports_matches_private(imports_root_node):
     a = imports_root_node.get(DotPath('a'))
-    assert list(_find_matching_private_imports(a, [], None))
+    assert list(_find_matching_private_imports(a, [], (), imports_root_node))
 
 
 @pytest.mark.parametrize(
@@ -271,7 +364,7 @@ def test_find_matching_private_imports_matches_private(imports_root_node):
 )
 def test_find_matching_private_imports_ignores_public(imports_root_node):
     a = imports_root_node.get(DotPath('a'))
-    assert not list(_find_matching_private_imports(a, [], None))
+    assert not list(_find_matching_private_imports(a, [], (), imports_root_node))
 
 
 @pytest.mark.parametrize(
@@ -280,7 +373,7 @@ def test_find_matching_private_imports_ignores_public(imports_root_node):
 )
 def test_find_matching_private_imports_ignores_future(imports_root_node):
     a = imports_root_node.get(DotPath('a'))
-    assert not list(_find_matching_private_imports(a, [], None))
+    assert not list(_find_matching_private_imports(a, [], (), imports_root_node))
 
 
 @pytest.mark.parametrize(
@@ -289,9 +382,13 @@ def test_find_matching_private_imports_ignores_future(imports_root_node):
 )
 def test_find_matching_private_imports_path_filter(imports_root_node):
     a = imports_root_node.get(DotPath('a'))
-    assert len(list(_find_matching_private_imports(a, [], 'b'))) == 1
-    assert len(list(_find_matching_private_imports(a, [], 'c'))) == 1
-    assert len(list(_find_matching_private_imports(a, [], None))) == 2
+    assert (
+        len(list(_find_matching_private_imports(a, [], ('b',), imports_root_node))) == 1
+    )
+    assert (
+        len(list(_find_matching_private_imports(a, [], ('c',), imports_root_node))) == 1
+    )
+    assert len(list(_find_matching_private_imports(a, [], (), imports_root_node))) == 2
 
 
 @pytest.mark.parametrize(
@@ -300,6 +397,6 @@ def test_find_matching_private_imports_path_filter(imports_root_node):
 )
 def test_find_matching_private_imports_nested(imports_root_node):
     r = imports_root_node.get(DotPath('r'))
-    matches = list(_find_matching_private_imports(r, [], None))
+    matches = list(_find_matching_private_imports(r, [], (), imports_root_node))
     assert len(matches) == 1
     assert 'a.py' in str(matches[0][0].file_path)

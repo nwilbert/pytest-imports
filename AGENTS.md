@@ -49,12 +49,15 @@ The plugin registers itself via the `pytest11` entry point in `pyproject.toml`, 
 1. `plugin.py` — pytest fixtures + `ImportsFixture.check()`. `imports_project_paths` resolves source roots; `imports_root_node` (session-scoped) builds the model once per session; `imports` wraps both.
 2. `parser.py` — `build_import_model()` walks the filesystem with AST analysis to produce a `RootNode`.
 3. `model.py` — `RootNode` / `ModuleNode` (tree), `DotPath` (dot-separated path abstraction, pathlib-like), `ImportInModule` (single import record; `level > 0` means relative import).
-4. `query.py` — frozen dataclass predicates (`MustImport`, `MustNotImport`, `MustNotImportPrivate`); target abstraction (`Target = str | Descendants | Internal`) accepted by `must_import` / `must_not_import`; `Scope` (hashable dict key); factory functions exported from `__init__.py`; `evaluate_rules()` collects all failures before raising.
+4. `query.py` — frozen dataclass predicates (`MustImport`, `MustNotImport`, `MustNotImportPrivate`, `MustOnlyImport`); target abstraction (`Target = str | Descendants | Internal`) accepted by `must_import` / `must_not_import` / `must_only_import`; `Scope` (hashable dict key); factory functions exported from `__init__.py`; `evaluate_rules()` collects all failures before raising. `MustImport.path` / `MustNotImport.path` / `MustNotImportPrivate.path` are `tuple[Target, ...]` (the factories normalize a single target or list via `_as_target_tuple`; for the private predicate an empty tuple means "no filter").
 
 **Key internals:**
 - `scope(path, without=...)` stores exclusions as `tuple[str, ...]` for hashability.
-- `CanImport` reports one failure per `.py` file in scope with no match; `MustNotImport` reports one failure per matching import found.
+- `MustImport` reports one failure per unsatisfied target (scope-level, not per `.py` file), conjunctive over its target tuple; `MustNotImport` is disjunctive — `_find_imports_matching_any` yields each import that matches any target (with the matched target, for the failure message), one failure per violating import line; `MustOnlyImport` walks `_find_matching_imports` filtered by `among` and applies the allowlist check inline.
+- `_find_matching_imports` (single target) delegates to `_find_imports_matching_any` (OR over a target tuple), so the walk + `via` filtering live in one place.
 - `project()` returns `Scope(path=None)`, which triggers `root_node.walk()` over all modules.
+- `Descendants` may carry `without` exclusions (a `tuple[str, ...]`, relative to its `path`); they are evaluated in `_match_target`, which rejects any `dot_path` falling under an excluded subtree.
+- `MustNotImportPrivate.path` is a `tuple[Target, ...]` (empty = no filter); `_find_matching_private_imports` OR-matches it via the `_match_target` family rather than the old `is_relative_to` string check, so `internal()` and `descendants(...)` work as private-import filters.
 
 **Test layout:**
 - `test/unit/` — isolated unit tests (no filesystem)

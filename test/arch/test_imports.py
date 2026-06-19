@@ -3,6 +3,7 @@ from pytest_imports import (
     must_import,
     must_not_import,
     must_not_import_private,
+    must_only_import,
     project,
     scope,
 )
@@ -27,6 +28,17 @@ def test_internal_dependencies(imports):
             scope('pytest_imports.plugin'): must_import('pytest_imports.model'),
             scope('pytest_imports.query'): must_import('pytest_imports.model'),
             scope('pytest_imports.parser'): must_import('pytest_imports.model'),
+        }
+    )
+
+
+def test_query_only_imports_model(imports):
+    # query.py is the rule layer; among internal modules it may only
+    # reach into model. Stated as an allowlist rather than enumerating
+    # every other internal module as a denylist.
+    imports.check(
+        {
+            scope('pytest_imports.query'): must_only_import('pytest_imports.model'),
         }
     )
 

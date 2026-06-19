@@ -4,6 +4,7 @@ from .query import (
     must_import,
     must_not_import,
     must_not_import_private,
+    must_only_import,
     project,
     scope,
 )
@@ -14,6 +15,7 @@ __all__ = [
     'must_import',
     'must_not_import',
     'must_not_import_private',
+    'must_only_import',
     'project',
     'scope',
 ]

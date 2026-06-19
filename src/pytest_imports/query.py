@@ -18,24 +18,46 @@ def project() -> Scope:
     return Scope(path=None)
 
 
-def descendants(path: str) -> Descendants:
-    return Descendants(path=path)
+def descendants(path: str, *, without: str | list[str] | None = None) -> Descendants:
+    if isinstance(without, str):
+        without = [without]
+    return Descendants(path=path, without=tuple(without or []))
 
 
 def internal() -> Internal:
     return Internal()
 
 
-def must_import(path: Target, *, via: Via | None = None) -> MustImport:
-    return MustImport(path=path, via=via)
+def must_import(path: Target | list[Target], *, via: Via | None = None) -> MustImport:
+    return MustImport(path=_as_target_tuple(path), via=via)
 
 
-def must_not_import(path: Target, *, via: Via | None = None) -> MustNotImport:
-    return MustNotImport(path=path, via=via)
+def must_not_import(
+    path: Target | list[Target], *, via: Via | None = None
+) -> MustNotImport:
+    return MustNotImport(path=_as_target_tuple(path), via=via)
 
 
-def must_not_import_private(path: str | None = None) -> MustNotImportPrivate:
-    return MustNotImportPrivate(path=path)
+def must_not_import_private(
+    path: Target | list[Target] | None = None,
+) -> MustNotImportPrivate:
+    return MustNotImportPrivate(path=() if path is None else _as_target_tuple(path))
+
+
+def must_only_import(
+    allowed: Target | list[Target],
+    *,
+    among: Target | None = None,
+    via: Via | None = None,
+) -> MustOnlyImport:
+    # `among` defaults to the bounded universe of internal imports. The
+    # default lives on the `MustOnlyImport` field (defined below), so a
+    # `None` here delegates to it rather than naming `Internal` before
+    # the dataclass exists.
+    allowed_tuple = _as_target_tuple(allowed)
+    if among is None:
+        return MustOnlyImport(allowed=allowed_tuple, via=via)
+    return MustOnlyImport(allowed=allowed_tuple, among=among, via=via)
 
 
 def evaluate_rules(
@@ -90,9 +112,14 @@ class Scope:
 
 @dataclass(frozen=True)
 class Descendants:
-    """Target matching the descendants of `path`, excluding `path` itself."""
+    """Target matching the descendants of `path`, excluding `path` itself.
+
+    `without` carves out subtrees, interpreted relative to `path`: each
+    entry excludes `path / entry` and its descendants.
+    """
 
     path: str
+    without: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -105,28 +132,56 @@ Target = str | Descendants | Internal
 
 @dataclass(frozen=True)
 class MustImport:
-    """Predicate asserting that a scope must contain a given import."""
+    """Predicate asserting that a scope must contain the given imports.
 
-    path: Target
+    Multiple targets are conjunctive: each must be matched by some
+    import in scope.
+    """
+
+    path: tuple[Target, ...]
     via: Via | None = None
 
 
 @dataclass(frozen=True)
 class MustNotImport:
-    """Predicate asserting that a scope must not contain a given import."""
+    """Predicate asserting that a scope must not contain the given imports.
 
-    path: Target
+    Multiple targets are disjunctive: an import matching any of them is
+    a violation.
+    """
+
+    path: tuple[Target, ...]
     via: Via | None = None
 
 
 @dataclass(frozen=True)
 class MustNotImportPrivate:
-    """Predicate asserting that a scope must not import any private name."""
+    """Predicate asserting that a scope must not import any private name.
 
-    path: str | None = None
+    `path` is an optional filter: an empty tuple flags every private
+    import, otherwise only private imports matching at least one target
+    are flagged.
+    """
+
+    path: tuple[Target, ...] = ()
 
 
-Predicate = MustImport | MustNotImport | MustNotImportPrivate
+@dataclass(frozen=True)
+class MustOnlyImport:
+    """Predicate asserting a scope may only import the `allowed` targets.
+
+    Among the imports matching `among` (the bounded universe, internal
+    modules by default), every one must match at least one entry in
+    `allowed`; any other is a violation. Imports outside `among` are
+    ignored.
+    """
+
+    allowed: tuple[Target, ...]
+    among: Target = Internal()
+    via: Via | None = None
+
+
+Predicate = MustImport | MustNotImport | MustNotImportPrivate | MustOnlyImport
 
 
 def _evaluate_predicate(
@@ -139,41 +194,77 @@ def _evaluate_predicate(
 ) -> None:
     match predicate:
         case MustImport():
-            target_str = _format_target(predicate.path)
-            if not any(
-                _find_matching_imports(
-                    node, exclude, predicate.path, predicate.via, root_node
-                )
-            ):
-                failures.append(
-                    f'  [scope {scope_label}] must import {target_str}'
-                    f' — no matching import found'
-                )
+            # Conjunctive: every target must be matched by some import.
+            for target in predicate.path:
+                if not any(
+                    _find_matching_imports(
+                        node, exclude, target, predicate.via, root_node
+                    )
+                ):
+                    failures.append(
+                        f'  [scope {scope_label}] must import {_format_target(target)}'
+                        f' — no matching import found'
+                    )
         case MustNotImport():
-            target_str = _format_target(predicate.path)
-            for module_node, import_by in _find_matching_imports(
+            # Disjunctive: an import matching any target is a violation.
+            multi = len(predicate.path) != 1
+            if multi:
+                target_str = (
+                    '{' + ', '.join(_format_target(t) for t in predicate.path) + '}'
+                )
+            else:
+                target_str = _format_target(predicate.path[0])
+            for module_node, import_by, matched in _find_imports_matching_any(
                 node, exclude, predicate.path, predicate.via, root_node
             ):
                 location = f'{module_node.file_path}:{import_by.line_no}'
-                if isinstance(predicate.path, str):
-                    failures.append(
-                        f'  [scope {scope_label}] must not import {target_str}'
-                        f' — found in {location}'
-                    )
-                else:
-                    failures.append(
-                        f'  [scope {scope_label}] must not import {target_str}'
-                        f' — found {import_by.dot_path} in {location}'
-                    )
+                matching = f' matching {_format_target(matched)}' if multi else ''
+                failures.append(
+                    f'  [scope {scope_label}] must not import {target_str}'
+                    f' — found {import_by.dot_path}{matching} in {location}'
+                )
         case MustNotImportPrivate():
+            if not predicate.path:
+                from_str = ''
+            elif len(predicate.path) == 1:
+                from_str = f' from {_format_target(predicate.path[0])}'
+            else:
+                targets = ', '.join(_format_target(t) for t in predicate.path)
+                from_str = f' from {{{targets}}}'
             for module_node, import_by in _find_matching_private_imports(
-                node, exclude, predicate.path
+                node, exclude, predicate.path, root_node
             ):
                 failures.append(
                     f'  [scope {scope_label}] must not import private names'
-                    + (f' from {predicate.path}' if predicate.path else '')
-                    + f' — found in {module_node.file_path}:{import_by.line_no}'
+                    f'{from_str}'
+                    f' — found in {module_node.file_path}:{import_by.line_no}'
                 )
+        case MustOnlyImport():
+            among_str = _format_target(predicate.among)
+            allowed_str = (
+                '{' + ', '.join(_format_target(t) for t in predicate.allowed) + '}'
+            )
+            for module_node, import_by in _find_matching_imports(
+                node, exclude, predicate.among, predicate.via, root_node
+            ):
+                if any(
+                    _match_target(t, import_by.dot_path, root_node)
+                    for t in predicate.allowed
+                ):
+                    continue
+                location = f'{module_node.file_path}:{import_by.line_no}'
+                if predicate.allowed:
+                    failures.append(
+                        f'  [scope {scope_label}] must only import {allowed_str}'
+                        f' among {among_str} — found {import_by.dot_path}'
+                        f' in {location}'
+                    )
+                else:
+                    failures.append(
+                        f'  [scope {scope_label}] must not import anything'
+                        f' among {among_str} — found {import_by.dot_path}'
+                        f' in {location}'
+                    )
 
 
 def _find_matching_imports(
@@ -183,24 +274,42 @@ def _find_matching_imports(
     via: Via | None,
     root_node: RootNode,
 ) -> Iterator[tuple[ModuleNode, ImportInModule]]:
+    for module_node, import_by, _ in _find_imports_matching_any(
+        base_node, exclude, (target,), via, root_node
+    ):
+        yield module_node, import_by
+
+
+def _find_imports_matching_any(
+    base_node: ModuleNode,
+    exclude: list[DotPath],
+    targets: tuple[Target, ...],
+    via: Via | None,
+    root_node: RootNode,
+) -> Iterator[tuple[ModuleNode, ImportInModule, Target]]:
+    """Yield each import matching any target, with the first target it matched."""
     absolute = _via_to_absolute(via)
     for module_node in base_node.walk(exclude=exclude):
         for import_by in module_node.imports:
-            if _match_target(target, import_by.dot_path, root_node) and (
-                absolute is None or absolute != bool(import_by.level)
-            ):
-                yield module_node, import_by
+            if absolute is not None and absolute == bool(import_by.level):
+                continue
+            for target in targets:
+                if _match_target(target, import_by.dot_path, root_node):
+                    yield module_node, import_by, target
+                    break
 
 
 def _find_matching_private_imports(
     base_node: ModuleNode,
     exclude: list[DotPath],
-    path: str | None,
+    path: tuple[Target, ...],
+    root_node: RootNode,
 ) -> Iterator[tuple[ModuleNode, ImportInModule]]:
-    filter_path = DotPath(path) if path else None
     for module_node in base_node.walk(exclude=exclude):
         for import_by in module_node.imports:
-            if filter_path and not import_by.dot_path.is_relative_to(filter_path):
+            if path and not any(
+                _match_target(t, import_by.dot_path, root_node) for t in path
+            ):
                 continue
             if any(_is_private_name(p) for p in import_by.dot_path.parts):
                 yield module_node, import_by
@@ -210,9 +319,11 @@ def _match_target(target: Target, dot_path: DotPath, root_node: RootNode) -> boo
     match target:
         case str():
             return dot_path.is_relative_to(DotPath(target))
-        case Descendants(path=p):
+        case Descendants(path=p, without=without):
             tp = DotPath(p)
-            return dot_path != tp and dot_path.is_relative_to(tp)
+            if dot_path == tp or not dot_path.is_relative_to(tp):
+                return False
+            return not any(dot_path.is_relative_to(tp / DotPath(w)) for w in without)
         case Internal():
             # An import is internal if it resolves to a module under the
             # configured source roots. Because the parser stores the imported
@@ -231,7 +342,9 @@ def _format_target(target: Target) -> str:
     match target:
         case str():
             return target
-        case Descendants(path=p):
+        case Descendants(path=p, without=without):
+            if without:
+                return f'descendants of {p} except {{{", ".join(without)}}}'
             return f'descendants of {p}'
         case Internal():
             return 'any internal module'
@@ -247,3 +360,7 @@ def _via_to_absolute(via: Via | None) -> bool | None:
 
 def _is_private_name(name: str) -> bool:
     return name.startswith('_') and name != '__future__'
+
+
+def _as_target_tuple(path: Target | list[Target]) -> tuple[Target, ...]:
+    return tuple(path) if isinstance(path, list) else (path,)

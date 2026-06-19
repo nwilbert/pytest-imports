@@ -37,10 +37,11 @@ Quick reference of the building blocks used below:
 | [`scope(path)`](#example-layered) | scope | Restrict a rule to `path` and its descendants. |
 | [`scope(path, without=...)`](#example-layered) | scope | Same, but exclude named submodules or subpackages. |
 | [`project()`](#example-private) | scope | All modules under the configured source roots. |
-| [`must_import(target)`](#example-layered) | predicate | Require an import of `target` (or a descendant) in scope. |
-| [`must_not_import(target)`](#example-layered) | predicate | Forbid imports of `target` (or a descendant) in scope. |
-| [`must_not_import_private()`](#example-private) | predicate | Forbid imports of any private (`_`-prefixed) name. |
-| [`descendants(path)`](#example-descendants) | target | Match descendants of `path` but not `path` itself. |
+| [`must_import(target)`](#example-layered) | predicate | Require an import of `target` (or a descendant) in scope. Accepts a list of targets (all required). |
+| [`must_not_import(target)`](#example-layered) | predicate | Forbid imports of `target` (or a descendant) in scope. Accepts a list of targets (any forbidden). |
+| [`must_only_import(allowed, among=internal())`](#example-only) | predicate | Allow only the listed targets within `among`; anything else inside `among` is a violation. |
+| [`must_not_import_private(target=None)`](#example-private) | predicate | Forbid imports of any private (`_`-prefixed) name; an optional target filter narrows which private imports are flagged. |
+| [`descendants(path, without=...)`](#example-descendants) | target | Match descendants of `path` but not `path` itself; `without=` carves out subtrees. |
 | [`internal()`](#example-internal) | target | Match any import resolving inside the source roots. |
 | [`via='absolute'` / `via='relative'`](#example-via) | option | Restrict a predicate to one import style. |
 
@@ -69,12 +70,23 @@ Via the `via` argument you can restrict a rule to only absolute (`via='absolute'
 def test_multiple_rules_per_scope(imports):
     imports.check({
         scope('myapp', without=['adapters']): [
-            must_not_import('sqlalchemy'),
-            must_not_import('flask'),
+            must_not_import(['sqlalchemy', 'flask']),
+            must_import('myapp.core'),
         ],
     })
 ```
-A list of predicates can be used to apply multiple rules to the same scope. All failures are reported together rather than stopping at the first violation.
+A predicate accepts a list of targets, so a fan-out of "forbid each of these" collapses to one `must_not_import(['sqlalchemy', 'flask'])` — disjunctive, so an import of either is a violation, and the failure message names which one matched. `must_import([...])` is conjunctive: every listed target must be imported somewhere in scope. A list of *predicates* (as above) applies several different rules to the same scope; all failures are reported together rather than stopping at the first violation.
+
+<a id="example-only"></a>
+```python
+from pytest_imports import must_only_import, scope
+
+def test_api_layer_imports(imports):
+    imports.check({
+        scope('myapp.api'): must_only_import(['myapp.core', 'myapp.schemas']),
+    })
+```
+`must_only_import` is the allowlist complement of `must_not_import`: within a bounded universe of imports, only the listed targets are permitted, and anything else inside that universe is a violation. The universe is the `among` parameter, which defaults to `internal()` — so the rule above says "`myapp.api` may only reach into `myapp.core` and `myapp.schemas`," while leaving stdlib and third-party imports (`os`, `fastapi`, …) untouched because they fall outside `internal()`. Each `allowed` entry is a [target](#example-descendants), so `descendants(...)` and `internal()` work there too, and a single target may be passed without the list. Override `among` to widen or narrow the universe, e.g. `among=descendants('myapp')` to police only `myapp.*` imports. An empty allowlist (`must_only_import([])`) forbids every import within `among` — a guardrail for a leaf module that must not reach back into the project.
 
 <a id="example-private"></a>
 ```python
@@ -85,7 +97,7 @@ def test_no_private_imports(imports):
         project(): must_not_import_private(),
     })
 ```
-`must_not_import_private()` checks that no module imports a private name — any dotted-path part starting with `_` or `__`, except the standard `__future__` module. `project()` is a special scope covering all modules under the configured source root — see [Configuration](#configuration) for which paths that includes (notably, with a `src/` layout `project()` does *not* include test folders, but with a flat layout it does). You can restrict to a specific package with `must_not_import_private('myapp')`.
+`must_not_import_private()` checks that no module imports a private name — any dotted-path part starting with `_` or `__`, except the standard `__future__` module. `project()` is a special scope covering all modules under the configured source root — see [Configuration](#configuration) for which paths that includes (notably, with a `src/` layout `project()` does *not* include test folders, but with a flat layout it does). The optional argument is a [target](#example-descendants) (or list of targets) that filters which private imports are flagged: `must_not_import_private('myapp')` restricts to a specific package, `must_not_import_private(internal())` flags only private imports of project-internal names (leaving third-party `_`-prefixed imports alone), and `must_not_import_private(descendants('myapp.capture'))` narrows to a subtree.
 
 <a id="example-descendants"></a>
 ```python
@@ -98,6 +110,8 @@ def test_capture_internals_are_encapsulated(imports):
     })
 ```
 `descendants('myapp.capture')` is a target helper that matches the descendants of `myapp.capture` (`myapp.capture.parser`, `myapp.capture.config`, …) but **not** `myapp.capture` itself. This lets the rest of `myapp` use the `myapp.capture` public surface (`import myapp.capture`) while keeping its internals private. A plain string target like `'myapp.capture'` would also flag `import myapp.capture`, which is usually not what you want here.
+
+Pass `without=` to carve subtrees out of the match, interpreted relative to the path — `descendants('myapp.contrib', without='admin')` matches everything under `myapp.contrib` except `myapp.contrib.admin` and its descendants. It accepts the same shapes as `scope(without=...)`: a single string, a list (`without=['admin', 'gis']`), or a dotted nested path (`without='admin.widgets'`). This is the target-side mirror of `scope(path, without=...)`, and pairs naturally with [`must_only_import`](#example-only) to express "allow everything under X except Y".
 
 <a id="example-internal"></a>
 ```python
