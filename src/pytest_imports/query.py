@@ -7,6 +7,30 @@ from typing import Literal
 from .model import DotPath, ImportInModule, ModuleNode, RootNode
 
 
+@dataclass(frozen=True)
+class Descendants:
+    """Target matching the descendants of `path`, excluding `path` itself.
+
+    `without` carves out subtrees, interpreted relative to `path`: each
+    entry excludes `path / entry` and its descendants.
+    """
+
+    path: str
+    without: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Internal:
+    """Target matching any import resolving inside the configured source roots."""
+
+
+Target = str | Descendants | Internal
+
+# The canonical shared `Internal()` instance, used as the default `among`
+# universe for `must_only_import`.
+INTERNAL = Internal()
+
+
 def scope(path: str, *, without: str | list[str] | None = None) -> Scope:
     if isinstance(without, str):
         without = [without]
@@ -25,7 +49,7 @@ def descendants(path: str, *, without: str | list[str] | None = None) -> Descend
 
 
 def internal() -> Internal:
-    return Internal()
+    return INTERNAL
 
 
 def must_import(path: Target | list[Target], *, via: Via | None = None) -> MustImport:
@@ -47,17 +71,12 @@ def must_not_import_private(
 def must_only_import(
     allowed: Target | list[Target],
     *,
-    among: Target | None = None,
+    among: Target = INTERNAL,
     via: Via | None = None,
 ) -> MustOnlyImport:
-    # `among` defaults to the bounded universe of internal imports. The
-    # default lives on the `MustOnlyImport` field (defined below), so a
-    # `None` here delegates to it rather than naming `Internal` before
-    # the dataclass exists.
-    allowed_tuple = _as_target_tuple(allowed)
-    if among is None:
-        return MustOnlyImport(allowed=allowed_tuple, via=via)
-    return MustOnlyImport(allowed=allowed_tuple, among=among, via=via)
+    # `among` is the bounded universe the allowlist is checked against;
+    # it defaults to all internal imports.
+    return MustOnlyImport(allowed=_as_target_tuple(allowed), among=among, via=via)
 
 
 def evaluate_rules(
@@ -111,26 +130,6 @@ class Scope:
 
 
 @dataclass(frozen=True)
-class Descendants:
-    """Target matching the descendants of `path`, excluding `path` itself.
-
-    `without` carves out subtrees, interpreted relative to `path`: each
-    entry excludes `path / entry` and its descendants.
-    """
-
-    path: str
-    without: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class Internal:
-    """Target matching any import resolving inside the configured source roots."""
-
-
-Target = str | Descendants | Internal
-
-
-@dataclass(frozen=True)
 class MustImport:
     """Predicate asserting that a scope must contain the given imports.
 
@@ -177,7 +176,7 @@ class MustOnlyImport:
     """
 
     allowed: tuple[Target, ...]
-    among: Target = Internal()
+    among: Target = INTERNAL
     via: Via | None = None
 
 
