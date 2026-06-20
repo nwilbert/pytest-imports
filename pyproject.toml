@@ -34,7 +34,9 @@ packages = ["src/pytest_imports"]
 
 [tool.uv]
 exclude-newer = "7d"
-exclude-newer-package = { pip = "2030-01-01" }
+# Override the 7-day window for security fixes that are still within it:
+# msgpack 1.2.1 fixes GHSA-6v7p-g79w-8964.
+exclude-newer-package = { pip = "2030-01-01", msgpack = "2026-06-19" }
 
 [tool.pytest.ini_options]
 testpaths = ["test/unit", "test/integration", "test/arch"]
