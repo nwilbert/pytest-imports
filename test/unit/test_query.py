@@ -302,46 +302,35 @@ def test_must_alias_factory():
 
 
 @pytest.mark.parametrize(
-    ('source', 'is_violation'),
+    ('project_structure', 'is_violation'),
     [
-        ('import numpy as np', False),
-        ('import numpy', True),
-        ('import numpy as foo', True),
-        ('import numpy.linalg', True),
-        ('import numpy.linalg as nl', False),
-        ('import numpy.linalg as np', True),
-        ('from numpy import array', False),
-        ('from numpy import linalg', False),
-        ('from numpy.linalg import inv', False),
-        ('from numpy import *', True),
-        ('from numpy.linalg import inv as solve', False),
+        ({'m.py': 'import numpy as np'}, False),
+        ({'m.py': 'import numpy'}, True),
+        ({'m.py': 'import numpy as foo'}, True),
+        ({'m.py': 'import numpy.linalg'}, True),
+        ({'m.py': 'import numpy.linalg as nl'}, False),
+        ({'m.py': 'import numpy.linalg as np'}, True),
+        ({'m.py': 'from numpy import array'}, False),
+        ({'m.py': 'from numpy import linalg'}, False),
+        ({'m.py': 'from numpy.linalg import inv'}, False),
+        ({'m.py': 'from numpy import *'}, True),
+        ({'m.py': 'from numpy.linalg import inv as solve'}, False),
+        # Path does not match: the alias collides but the package does not.
+        ({'m.py': 'import scipy as np'}, False),
     ],
 )
-def test_find_alias_violations_semantics(tmp_path, source, is_violation):
-    from pytest_imports.parser import build_import_model
-
-    (tmp_path / 'm.py').write_text(source)
-    root = build_import_model([tmp_path])
-    m = root.get(DotPath('m'))
+def test_find_alias_violations_semantics(imports_root_node, is_violation):
+    m = imports_root_node.get(DotPath('m'))
     violations = list(_find_alias_violations(m, [], 'numpy', 'np'))
     assert bool(violations) == is_violation
 
 
-def test_find_alias_violations_ignores_other_package(tmp_path):
-    from pytest_imports.parser import build_import_model
-
-    (tmp_path / 'm.py').write_text('import scipy as np')
-    root = build_import_model([tmp_path])
-    m = root.get(DotPath('m'))
-    assert not list(_find_alias_violations(m, [], 'numpy', 'np'))
-
-
-def test_find_alias_violations_mixed_file_reports_only_violation(tmp_path):
-    from pytest_imports.parser import build_import_model
-
-    (tmp_path / 'm.py').write_text('import numpy as np\nimport numpy')
-    root = build_import_model([tmp_path])
-    m = root.get(DotPath('m'))
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'m.py': 'import numpy as np\nimport numpy'}],
+)
+def test_find_alias_violations_mixed_file_reports_only_violation(imports_root_node):
+    m = imports_root_node.get(DotPath('m'))
     violations = list(_find_alias_violations(m, [], 'numpy', 'np'))
     assert len(violations) == 1
     assert violations[0][1].line_no == 2

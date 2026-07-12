@@ -49,7 +49,6 @@ def _collect_imports(
                             dot_path=DotPath(alias.name),
                             line_no=alias.lineno,
                             asname=alias.asname,
-                            is_from_import=False,
                         )
                     )
             case ast.ImportFrom() as ast_import_from:
