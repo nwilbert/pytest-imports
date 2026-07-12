@@ -33,17 +33,23 @@ def project_path(project_structure: dict[str, str | dict], tmp_path: Path) -> Pa
                 'a': {'b.py': 'from .. import y'},
             },
             'a.b',
-            ImportInModule(dot_path=DotPath('y'), line_no=1, level=2),
+            ImportInModule(
+                dot_path=DotPath('y'), line_no=1, level=2, is_from_import=True
+            ),
         ),
         (
             {'a': {'b': {'c.py': '...\nfrom .. import y'}}},
             'a.b.c',
-            ImportInModule(dot_path=DotPath('a.y'), line_no=2, level=2),
+            ImportInModule(
+                dot_path=DotPath('a.y'), line_no=2, level=2, is_from_import=True
+            ),
         ),
         (
             {'a': {'b.py': '...\n\nfrom .x import y'}},
             'a.b',
-            ImportInModule(dot_path=DotPath('a.x.y'), line_no=3, level=1),
+            ImportInModule(
+                dot_path=DotPath('a.x.y'), line_no=3, level=1, is_from_import=True
+            ),
         ),
     ],
 )
@@ -89,22 +95,30 @@ def test_import_from_init(project_path):
         (
             {'pkg': {'__init__.py': 'from . import y'}},
             'pkg',
-            ImportInModule(dot_path=DotPath('pkg.y'), line_no=1, level=1),
+            ImportInModule(
+                dot_path=DotPath('pkg.y'), line_no=1, level=1, is_from_import=True
+            ),
         ),
         (
             {'pkg': {'__init__.py': 'from .x import y'}},
             'pkg',
-            ImportInModule(dot_path=DotPath('pkg.x.y'), line_no=1, level=1),
+            ImportInModule(
+                dot_path=DotPath('pkg.x.y'), line_no=1, level=1, is_from_import=True
+            ),
         ),
         (
             {'pkg': {'sub': {'__init__.py': 'from . import y'}}},
             'pkg.sub',
-            ImportInModule(dot_path=DotPath('pkg.sub.y'), line_no=1, level=1),
+            ImportInModule(
+                dot_path=DotPath('pkg.sub.y'), line_no=1, level=1, is_from_import=True
+            ),
         ),
         (
             {'pkg': {'sub': {'__init__.py': 'from .. import y'}}},
             'pkg.sub',
-            ImportInModule(dot_path=DotPath('pkg.y'), line_no=1, level=2),
+            ImportInModule(
+                dot_path=DotPath('pkg.y'), line_no=1, level=2, is_from_import=True
+            ),
         ),
     ],
 )
@@ -126,13 +140,72 @@ def test_relative_import_in_init(project_path: Path, path: str, import_obj):
         (
             {'a': {'b': {'c.py': '...\nimport x as y'}}},
             'a.b.c',
-            ImportInModule(dot_path=DotPath('x'), line_no=2),
+            ImportInModule(dot_path=DotPath('x'), line_no=2, asname='y'),
         ),
     ],
 )
 def test_absolute_import(project_path: Path, path: DotPath, import_obj):
     base_node = build_import_model([project_path])
     assert base_node.get(DotPath(path)).imports == [import_obj]
+
+
+@pytest.mark.parametrize(
+    ('project_structure', 'path', 'import_obj'),
+    [
+        (
+            {'a.py': 'import x'},
+            'a',
+            ImportInModule(DotPath('x'), 1, asname=None, is_from_import=False),
+        ),
+        (
+            {'a.py': 'import x as y'},
+            'a',
+            ImportInModule(DotPath('x'), 1, asname='y', is_from_import=False),
+        ),
+        (
+            {'a.py': 'import x.y'},
+            'a',
+            ImportInModule(DotPath('x.y'), 1, asname=None, is_from_import=False),
+        ),
+        (
+            {'a.py': 'from x import y'},
+            'a',
+            ImportInModule(DotPath('x.y'), 1, asname=None, is_from_import=True),
+        ),
+        (
+            {'a.py': 'from x import y as z'},
+            'a',
+            ImportInModule(DotPath('x.y'), 1, asname='z', is_from_import=True),
+        ),
+        (
+            {'pkg': {'a.py': 'from . import y'}},
+            'pkg.a',
+            ImportInModule(
+                DotPath('pkg.y'), 1, level=1, asname=None, is_from_import=True
+            ),
+        ),
+        (
+            {'a.py': 'from x import *'},
+            'a',
+            ImportInModule(DotPath('x.*'), 1, asname=None, is_from_import=True),
+        ),
+    ],
+)
+def test_asname_and_is_from_import_captured(project_path: Path, path: str, import_obj):
+    base_node = build_import_model([project_path])
+    assert base_node.get(DotPath(path)).imports == [import_obj]
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'a.py': 'import x, y as z'}],
+)
+def test_chained_import_captures_each_alias(project_path: Path):
+    base_node = build_import_model([project_path])
+    assert base_node.get(DotPath('a')).imports == [
+        ImportInModule(DotPath('x'), 1, asname=None, is_from_import=False),
+        ImportInModule(DotPath('y'), 1, asname='z', is_from_import=False),
+    ]
 
 
 @pytest.mark.parametrize(

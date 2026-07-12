@@ -1,6 +1,7 @@
 from .query import (
     descendants,
     internal,
+    must_alias,
     must_import,
     must_not_import,
     must_not_import_private,
@@ -12,6 +13,7 @@ from .query import (
 __all__ = [
     'descendants',
     'internal',
+    'must_alias',
     'must_import',
     'must_not_import',
     'must_not_import_private',

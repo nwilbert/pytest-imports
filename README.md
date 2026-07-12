@@ -41,6 +41,7 @@ Quick reference of the building blocks used below:
 | [`must_not_import(target)`](#example-layered) | predicate | Forbid imports of `target` (or a descendant) in scope. Accepts a list of targets (any forbidden). |
 | [`must_only_import(allowed, among=internal())`](#example-only) | predicate | Allow only the listed targets within `among`; anything else inside `among` is a violation. |
 | [`must_not_import_private(target=None)`](#example-private) | predicate | Forbid imports of any private (`_`-prefixed) name; an optional target filter narrows which private imports are flagged. |
+| [`must_alias(path, alias)`](#example-alias) | predicate | Require that `path`, when it enters the namespace, does so only under `alias` (e.g. `numpy as np`). |
 | [`descendants(path, without=...)`](#example-descendants) | target | Match descendants of `path` but not `path` itself; `without=` carves out subtrees. |
 | [`internal()`](#example-internal) | target | Match any import resolving inside the source roots. |
 | [`via='absolute'` / `via='relative'`](#example-via) | option | Restrict a predicate to one import style. |
@@ -98,6 +99,17 @@ def test_no_private_imports(imports):
     })
 ```
 `must_not_import_private()` checks that no module imports a private name — any dotted-path part starting with `_` or `__`, except the standard `__future__` module. `project()` is a special scope covering all modules under the configured source root — see [Configuration](#configuration) for which paths that includes (notably, with a `src/` layout `project()` does *not* include test folders, but with a flat layout it does). The optional argument is a [target](#example-descendants) (or list of targets) that filters which private imports are flagged: `must_not_import_private('myapp')` restricts to a specific package, `must_not_import_private(internal())` flags only private imports of project-internal names (leaving third-party `_`-prefixed imports alone), and `must_not_import_private(descendants('myapp.capture'))` narrows to a subtree.
+
+<a id="example-alias"></a>
+```python
+from pytest_imports import must_alias, project
+
+def test_numpy_alias(imports):
+    imports.check({
+        project(): must_alias('numpy', 'np'),
+    })
+```
+`must_alias('numpy', 'np')` enforces a conventional import alias: whenever `numpy` would enter a module's namespace under any other name, the import is flagged. It rejects `import numpy` (binds the bare name), `import numpy as foo` (wrong alias), `import numpy.linalg` (Python binds the top-level `numpy`), and `import numpy.linalg as np` (the canonical alias pointing at a submodule), while accepting `import numpy as np` and `import numpy.linalg as nl`. Unlike `must_import`, it does **not** require `numpy` to be imported — it only constrains *how* it is imported when it appears. The rule is namespace-oriented, so from-imports of members and submodules (`from numpy import array`, `from numpy.linalg import inv`) are allowed because they don't bind `numpy` itself; a wildcard `from numpy import *` is flagged as namespace pollution.
 
 <a id="example-descendants"></a>
 ```python

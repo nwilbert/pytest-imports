@@ -79,6 +79,10 @@ def must_only_import(
     return MustOnlyImport(allowed=_as_target_tuple(allowed), among=among, via=via)
 
 
+def must_alias(path: str, alias: str) -> MustAlias:
+    return MustAlias(path=path, alias=alias)
+
+
 def evaluate_rules(
     root_node: RootNode,
     rules: dict[Scope, Predicate | list[Predicate]],
@@ -180,7 +184,25 @@ class MustOnlyImport:
     via: Via | None = None
 
 
-Predicate = MustImport | MustNotImport | MustNotImportPrivate | MustOnlyImport
+@dataclass(frozen=True)
+class MustAlias:
+    """Predicate asserting a package may only enter the namespace under `alias`.
+
+    Namespace-oriented, not statement-oriented: a plain `import <path>`
+    must bind the canonical `alias` (`import numpy as np`), and the
+    canonical alias must not be bound to a submodule. Non-star
+    from-imports (`from numpy import array`) are allowed — they bind only
+    the imported member, not the target package. The predicate does not
+    require the package to be imported at all; it only constrains how.
+    """
+
+    path: str
+    alias: str
+
+
+Predicate = (
+    MustImport | MustNotImport | MustNotImportPrivate | MustOnlyImport | MustAlias
+)
 
 
 def _evaluate_predicate(
@@ -264,6 +286,15 @@ def _evaluate_predicate(
                         f' among {among_str} — found {import_by.dot_path}'
                         f' in {location}'
                     )
+        case MustAlias():
+            for module_node, import_by in _find_alias_violations(
+                node, exclude, predicate.path, predicate.alias
+            ):
+                location = f'{module_node.file_path}:{import_by.line_no}'
+                failures.append(
+                    f'  [scope {scope_label}] must import {predicate.path}'
+                    f' only as {predicate.alias} — found in {location}'
+                )
 
 
 def _find_matching_imports(
@@ -312,6 +343,40 @@ def _find_matching_private_imports(
                 continue
             if any(_is_private_name(p) for p in import_by.dot_path.parts):
                 yield module_node, import_by
+
+
+def _find_alias_violations(
+    base_node: ModuleNode,
+    exclude: list[DotPath],
+    path: str,
+    alias: str,
+) -> Iterator[tuple[ModuleNode, ImportInModule]]:
+    """Yield each import that binds `path` under a name other than `alias`.
+
+    Only imports whose `dot_path` is relative to `path` are considered;
+    see `_is_alias_violation` for the per-import rule.
+    """
+    target = DotPath(path)
+    for module_node in base_node.walk(exclude=exclude):
+        for import_by in module_node.imports:
+            if not import_by.dot_path.is_relative_to(target):
+                continue
+            if _is_alias_violation(import_by, target, alias):
+                yield module_node, import_by
+
+
+def _is_alias_violation(import_by: ImportInModule, target: DotPath, alias: str) -> bool:
+    if import_by.is_from_import:
+        # Non-star from-imports bind only the member, not the target.
+        return import_by.dot_path.name == '*'
+    if import_by.asname is None:
+        # A plain `import` binds the bare top-level package name.
+        return True
+    if import_by.dot_path == target:
+        # The target itself must use the canonical alias.
+        return import_by.asname != alias
+    # A descendant must not steal the canonical alias.
+    return import_by.asname == alias
 
 
 def _match_target(target: Target, dot_path: DotPath, root_node: RootNode) -> bool:

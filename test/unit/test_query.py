@@ -4,12 +4,15 @@ from pytest_imports.model import DotPath, RootNode
 from pytest_imports.query import (
     Descendants,
     Internal,
+    MustAlias,
+    _find_alias_violations,
     _find_matching_imports,
     _find_matching_private_imports,
     _format_target,
     _match_target,
     descendants,
     internal,
+    must_alias,
     must_import,
     must_not_import,
     must_not_import_private,
@@ -289,6 +292,59 @@ def test_find_matching_imports_internal_absolute_via(imports_root_node):
     assert not list(
         _find_matching_imports(pkg, [], internal(), 'relative', imports_root_node)
     )
+
+
+def test_must_alias_factory():
+    p = must_alias('numpy', 'np')
+    assert p == MustAlias(path='numpy', alias='np')
+    assert p.path == 'numpy'
+    assert p.alias == 'np'
+
+
+@pytest.mark.parametrize(
+    ('source', 'is_violation'),
+    [
+        ('import numpy as np', False),
+        ('import numpy', True),
+        ('import numpy as foo', True),
+        ('import numpy.linalg', True),
+        ('import numpy.linalg as nl', False),
+        ('import numpy.linalg as np', True),
+        ('from numpy import array', False),
+        ('from numpy import linalg', False),
+        ('from numpy.linalg import inv', False),
+        ('from numpy import *', True),
+        ('from numpy.linalg import inv as solve', False),
+    ],
+)
+def test_find_alias_violations_semantics(tmp_path, source, is_violation):
+    from pytest_imports.parser import build_import_model
+
+    (tmp_path / 'm.py').write_text(source)
+    root = build_import_model([tmp_path])
+    m = root.get(DotPath('m'))
+    violations = list(_find_alias_violations(m, [], 'numpy', 'np'))
+    assert bool(violations) == is_violation
+
+
+def test_find_alias_violations_ignores_other_package(tmp_path):
+    from pytest_imports.parser import build_import_model
+
+    (tmp_path / 'm.py').write_text('import scipy as np')
+    root = build_import_model([tmp_path])
+    m = root.get(DotPath('m'))
+    assert not list(_find_alias_violations(m, [], 'numpy', 'np'))
+
+
+def test_find_alias_violations_mixed_file_reports_only_violation(tmp_path):
+    from pytest_imports.parser import build_import_model
+
+    (tmp_path / 'm.py').write_text('import numpy as np\nimport numpy')
+    root = build_import_model([tmp_path])
+    m = root.get(DotPath('m'))
+    violations = list(_find_alias_violations(m, [], 'numpy', 'np'))
+    assert len(violations) == 1
+    assert violations[0][1].line_no == 2
 
 
 def test_match_target_string():

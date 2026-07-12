@@ -49,7 +49,7 @@ The plugin registers itself via the `pytest11` entry point in `pyproject.toml`, 
 1. `plugin.py` — pytest fixtures + `ImportsFixture.check()`. `imports_project_paths` resolves source roots; `imports_root_node` (session-scoped) builds the model once per session; `imports` wraps both.
 2. `parser.py` — `build_import_model()` walks the filesystem with AST analysis to produce a `RootNode`.
 3. `model.py` — `RootNode` / `ModuleNode` (tree), `DotPath` (dot-separated path abstraction, pathlib-like), `ImportInModule` (single import record; `level > 0` means relative import).
-4. `query.py` — frozen dataclass predicates (`MustImport`, `MustNotImport`, `MustNotImportPrivate`, `MustOnlyImport`); target abstraction (`Target = str | Descendants | Internal`) accepted by `must_import` / `must_not_import` / `must_only_import`; `Scope` (hashable dict key); factory functions exported from `__init__.py`; `evaluate_rules()` collects all failures before raising. `MustImport.path` / `MustNotImport.path` / `MustNotImportPrivate.path` are `tuple[Target, ...]` (the factories normalize a single target or list via `_as_target_tuple`; for the private predicate an empty tuple means "no filter").
+4. `query.py` — frozen dataclass predicates (`MustImport`, `MustNotImport`, `MustNotImportPrivate`, `MustOnlyImport`, `MustAlias`); target abstraction (`Target = str | Descendants | Internal`) accepted by `must_import` / `must_not_import` / `must_only_import`; `Scope` (hashable dict key); factory functions exported from `__init__.py`; `evaluate_rules()` collects all failures before raising. `MustImport.path` / `MustNotImport.path` / `MustNotImportPrivate.path` are `tuple[Target, ...]` (the factories normalize a single target or list via `_as_target_tuple`; for the private predicate an empty tuple means "no filter"). `MustAlias(path, alias)` takes a single dotted-path string (not a target) plus the required alias.
 
 **Key internals:**
 - `scope(path, without=...)` stores exclusions as `tuple[str, ...]` for hashability.
@@ -58,6 +58,7 @@ The plugin registers itself via the `pytest11` entry point in `pyproject.toml`, 
 - `project()` returns `Scope(path=None)`, which triggers `root_node.walk()` over all modules.
 - `Descendants` may carry `without` exclusions (a `tuple[str, ...]`, relative to its `path`); they are evaluated in `_match_target`, which rejects any `dot_path` falling under an excluded subtree.
 - `MustNotImportPrivate.path` is a `tuple[Target, ...]` (empty = no filter); `_find_matching_private_imports` OR-matches it via the `_match_target` family rather than the old `is_relative_to` string check, so `internal()` and `descendants(...)` work as private-import filters.
+- `MustAlias` is namespace-oriented: `_find_alias_violations` walks imports whose `dot_path` is relative to `path` and delegates each to `_is_alias_violation`, which uses the new `ImportInModule.asname` / `is_from_import` fields — non-star from-imports are always OK (they bind only the member), a plain `import` must carry `asname == alias` on the target itself and must not bind `alias` to a descendant, and `from ... import *` is flagged.
 
 **Test layout:**
 - `test/unit/` — isolated unit tests (no filesystem)

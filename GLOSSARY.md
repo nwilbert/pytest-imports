@@ -72,6 +72,12 @@ use these words less rigorously and can read as if `submodule` and
   model, `ImportInModule.level > 0`. See Python reference:
   [Package relative imports](https://docs.python.org/3/reference/import.html#package-relative-imports)
   and [PEP 328](https://peps.python.org/pep-0328/).
+- **alias** — The local name an import is bound to via an `as` clause:
+  the `np` in `import numpy as np` or the `z` in `from x import y as z`.
+  Recorded as `ImportInModule.asname` (`None` when no `as` clause is
+  present). The `must_alias` predicate constrains which alias a package
+  may enter the namespace under. See Python reference:
+  [import statement](https://docs.python.org/3/reference/import.html#the-import-statement).
 - **internal import** — An import whose target resolves inside the
   configured project source paths.
 - **external import** — An import whose target is the standard library or

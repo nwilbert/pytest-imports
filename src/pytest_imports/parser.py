@@ -48,6 +48,8 @@ def _collect_imports(
                         ImportInModule(
                             dot_path=DotPath(alias.name),
                             line_no=alias.lineno,
+                            asname=alias.asname,
+                            is_from_import=False,
                         )
                     )
             case ast.ImportFrom() as ast_import_from:
@@ -73,6 +75,8 @@ def _collect_imports(
                             dot_path=from_path,
                             line_no=alias.lineno,
                             level=ast_import_from.level,
+                            asname=alias.asname,
+                            is_from_import=True,
                         )
                     )
     return imports

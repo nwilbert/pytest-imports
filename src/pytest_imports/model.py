@@ -154,11 +154,18 @@ class ImportInModule:
     It is always absolute, even when the source statement is a relative
     import — in that case the relativity is recorded separately by
     `level > 0`.
+
+    `asname` is the local binding name from an `as` clause (`None` when
+    absent). `is_from_import` distinguishes `from a import b`
+    (`is_from_import=True`) from `import a.b` (`is_from_import=False`),
+    which otherwise both yield `dot_path=a.b, level=0`.
     """
 
     dot_path: DotPath
     line_no: int
     level: int = 0
+    asname: str | None = None
+    is_from_import: bool = False
 
 
 class DotPath:
