@@ -10,10 +10,6 @@ resolution-markers = [
 exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P7D"
 
-[options.exclude-newer-package]
-pip = "2030-01-01T23:00:00Z"
-msgpack = "2026-06-19T22:00:00Z"
-
 [[package]]
 name = "argcomplete"
 version = "3.6.3"

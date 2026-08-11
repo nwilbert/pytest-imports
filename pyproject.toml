@@ -35,9 +35,12 @@ packages = ["src/pytest_imports"]
 
 [tool.uv]
 exclude-newer = "7d"
-# Override the 7-day window for security fixes that are still within it:
-# msgpack 1.2.1 fixes GHSA-6v7p-g79w-8964.
-exclude-newer-package = { pip = "2030-01-01", msgpack = "2026-06-19" }
+# To pull a security fix in before the cooldown expires, add an
+# `exclude-newer-package` override — as an explicit UTC instant
+# ("2026-06-20T00:00:00Z"), never a bare date. uv reads a bare date as the end
+# of that day in the *local* timezone and stores the resolved instant in
+# uv.lock, so a lockfile written outside UTC fails CI's `--locked` sync. Drop
+# the override once the window has moved past it.
 
 [tool.pytest.ini_options]
 testpaths = ["test/unit", "test/integration", "test/arch"]
