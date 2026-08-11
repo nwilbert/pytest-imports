@@ -18,6 +18,9 @@ nox.options.sessions = [
 ]
 
 
+_SYNC_FLAGS = ('--locked', '--active')
+
+
 def _sync(session: nox.Session, *groups: str, include_project: bool = False) -> None:
     if include_project:
         group_args = [arg for group in groups for arg in ('--group', group)]
@@ -26,8 +29,7 @@ def _sync(session: nox.Session, *groups: str, include_project: bool = False) -> 
             'sync',
             '--no-default-groups',
             *group_args,
-            '--exact',
-            '--active',
+            *_SYNC_FLAGS,
             external=True,
         )
     else:
@@ -36,34 +38,37 @@ def _sync(session: nox.Session, *groups: str, include_project: bool = False) -> 
             'uv',
             'sync',
             *group_args,
-            '--exact',
-            '--active',
+            *_SYNC_FLAGS,
             '--no-install-project',
             external=True,
         )
 
 
-@nox.session
-def format(session):
+@nox.session(name='format')
+def format_code(session: nox.Session) -> None:
+    if session.posargs:
+        session.error('format takes no arguments; `lint` is the read-only check')
     _sync(session, 'lint')
     session.run('ruff', 'check', '--select', 'I', '--fix', *code_paths)
-    session.run('ruff', 'format', *session.posargs, *code_paths)
+    session.run('ruff', 'format', *code_paths)
 
 
 @nox.session
-def lint(session):
+def lint(session: nox.Session) -> None:
+    """The read-only gate: lint rules, then formatting drift. `format` fixes both."""
     _sync(session, 'lint')
-    session.run('ruff', 'check', *session.posargs, *code_paths)
+    session.run('ruff', 'check', *code_paths)
+    session.run('ruff', 'format', '--check', *code_paths)
 
 
 @nox.session
-def mypy(session):
-    _sync(session, 'typecheck')
-    session.run('mypy', src_path)
+def mypy(session: nox.Session) -> None:
+    _sync(session, 'typecheck', include_project=True)
+    session.run('mypy', src_path, 'noxfile.py')
 
 
 @nox.session
-def test(session):
+def test(session: nox.Session) -> None:
     _sync(session, 'test', include_project=True)
     session.run('pytest')
 
@@ -84,14 +89,14 @@ PYTEST_PYTHON_MATRIX = [
         for python in pythons
     ],
 )
-def pytest_compat(session, pytest_version):
+def pytest_compat(session: nox.Session, pytest_version: str) -> None:
     _sync(session, 'test', include_project=True)
     session.run('uv', 'pip', 'install', f'pytest~={pytest_version}.0', external=True)
     session.run('pytest', 'test/integration')
 
 
 @nox.session
-def coverage(session):
+def coverage(session: nox.Session) -> None:
     _sync(session, 'coverage', include_project=True)
     session.run(
         'coverage',
@@ -113,12 +118,12 @@ def coverage(session):
 
 @nox.session
 def audit(session: nox.Session) -> None:
+    # Not _sync: pip-audit needs every declared group plus the project.
     session.run(
         'uv',
         'sync',
         '--all-groups',
-        '--exact',
-        '--active',
+        *_SYNC_FLAGS,
         external=True,
     )
     session.run('pip-audit', '--local')

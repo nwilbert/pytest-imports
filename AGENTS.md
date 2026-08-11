@@ -20,7 +20,7 @@ When you introduce a new domain term in code or docs, add it to
 ## Commands
 
 ```bash
-# Run all default nox sessions (format, lint, mypy, test, audit)
+# Run all default nox sessions (format, lint, mypy, test, coverage, audit)
 uv run nox
 
 # Run a single nox session
