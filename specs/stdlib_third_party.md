@@ -78,9 +78,9 @@ imports.check({
 
   ```python
   case Stdlib():
-      return not _is_internal(dot_path, root_node) and _is_stdlib(dot_path)
+      return _is_stdlib(dot_path) and not _is_internal(dot_path, root_node)
   case ThirdParty():
-      return not _is_internal(dot_path, root_node) and not _is_stdlib(dot_path)
+      return not _is_stdlib(dot_path) and not _is_internal(dot_path, root_node)
   ```
 
 - `_format_target`: `'any stdlib module'`, `'any third-party module'`.
@@ -99,8 +99,9 @@ Unit tests (`test/unit/test_query.py`):
 - Every import in a mixed fixture matches exactly one of the three
   targets.
 - `tomllib` matches `stdlib()` on 3.11+ and `third_party()` on 3.10
-  (branch on `sys.version_info`; the `pytest_compat` matrix covers
-  both).
+  (branch on `sys.version_info`). The `pytest_compat` matrix runs only
+  `test/integration`, so this case also gets a pytester test in
+  `test/integration/plugin/test_arch.py` to cover both sides.
 - Failure messages (`test/unit/test_plugin.py`) for `must_not_import(third_party())` and
   `must_only_import(..., among=third_party())`.
 

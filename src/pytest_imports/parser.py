@@ -52,29 +52,26 @@ def _collect_imports(
                         )
                     )
             case ast.ImportFrom() as ast_import_from:
-                for alias in ast_import_from.names:
-                    if ast_import_from.module:
-                        from_path = DotPath(ast_import_from.module)
-                    else:
-                        from_path = DotPath()
-                    if (level := ast_import_from.level) > 0:
-                        anchor_depth = len(package_path.parts) - (level - 1)
-                        # A relative import must anchor to at least the
-                        # top-level package; Python raises ImportError otherwise.
-                        if anchor_depth < 1:
-                            log.warning(
-                                f'Skipping relative import in {module_path}, '
-                                f'line {alias.lineno}: it goes beyond the '
-                                f'top-level package.'
-                            )
-                            continue
-                        from_path = (
-                            DotPath(package_path.parts[:anchor_depth]) / from_path
+                if ast_import_from.module:
+                    from_path = DotPath(ast_import_from.module)
+                else:
+                    from_path = DotPath()
+                if (level := ast_import_from.level) > 0:
+                    anchor_depth = len(package_path.parts) - (level - 1)
+                    # A relative import must anchor to at least the
+                    # top-level package; Python raises ImportError otherwise.
+                    if anchor_depth < 1:
+                        log.warning(
+                            f'Skipping relative import in {module_path}, '
+                            f'line {ast_import_from.lineno}: it goes beyond the '
+                            f'top-level package.'
                         )
-                    from_path /= alias.name
+                        continue
+                    from_path = DotPath(package_path.parts[:anchor_depth]) / from_path
+                for alias in ast_import_from.names:
                     imports.append(
                         ImportInModule(
-                            dot_path=from_path,
+                            dot_path=from_path / alias.name,
                             line_no=alias.lineno,
                             level=ast_import_from.level,
                             asname=alias.asname,

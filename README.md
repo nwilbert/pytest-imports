@@ -163,7 +163,7 @@ def test_external_dependencies(imports):
 ```
 `stdlib()` and `third_party()` are target helpers that, together with `internal()`, split every import into three disjoint classes — see [Internal, stdlib and third-party imports](#internal-stdlib-and-third-party-imports). They let you state "no third-party dependencies here" without listing every installed package, and without the list going stale when someone adds a dependency. Note that `__future__` counts as a stdlib module, so a stdlib allowlist must name it to permit `from __future__ import annotations`.
 
-Stdlib membership follows the Python version running pytest: `tomllib` is third-party on 3.10, and `distutils` is third-party on 3.12+. (It does not depend on the platform — `winreg` is stdlib everywhere.) If your code has a version-dependent fallback such as `try: import tomllib` / `except ImportError: import tomli`, phrase the rule as an allowlist rather than a ban, so it passes on every version: `must_only_import(['tomllib', 'tomli'], among=third_party())`.
+Stdlib membership follows the Python version running pytest: `tomllib` is third-party on 3.10, and `distutils` is third-party on 3.12+. (It does not depend on the platform — `winreg` is stdlib everywhere.) Typing-only modules that exist only in typeshed, such as `_typeshed`, are not in that set and therefore count as third-party. If your code has a version-dependent fallback such as `try: import tomllib` / `except ImportError: import tomli`, phrase the rule as an allowlist rather than a ban, so it passes on every version: `must_only_import(['tomllib', 'tomli'], among=third_party())`.
 
 ### Reporting violations without failing
 
