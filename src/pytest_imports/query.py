@@ -409,10 +409,12 @@ def _match_target(target: Target, dot_path: DotPath, root_node: RootNode) -> boo
             return not any(dot_path.is_relative_to(tp / DotPath(w)) for w in without)
         case Internal():
             return _is_internal(dot_path, root_node)
+        # Internal wins over stdlib; the cheap name check runs first so the
+        # prefix walk is skipped where the name alone decides.
         case Stdlib():
-            return not _is_internal(dot_path, root_node) and _is_stdlib(dot_path)
+            return _is_stdlib(dot_path) and not _is_internal(dot_path, root_node)
         case ThirdParty():
-            return not _is_internal(dot_path, root_node) and not _is_stdlib(dot_path)
+            return not _is_stdlib(dot_path) and not _is_internal(dot_path, root_node)
 
 
 def _is_internal(dot_path: DotPath, root_node: RootNode) -> bool:
