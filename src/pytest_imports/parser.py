@@ -28,7 +28,7 @@ def build_import_model(base_paths: Sequence[Path]) -> RootNode:
             node = root_node.get_or_add(dot_path, module_path)
             is_init = module_path.name == '__init__.py'
             package_path = dot_path if is_init else dot_path.parent
-            imports = _collect_imports(module_ast, package_path)
+            imports = _collect_imports(module_ast, package_path, module_path)
             if is_init:
                 node.add_data_for_init_file(module_path, imports)
             else:
@@ -37,7 +37,7 @@ def build_import_model(base_paths: Sequence[Path]) -> RootNode:
 
 
 def _collect_imports(
-    module_ast: ast.Module, package_path: DotPath
+    module_ast: ast.Module, package_path: DotPath, module_path: Path
 ) -> Sequence[ImportInModule]:
     imports: list[ImportInModule] = []
     for ast_node in ast.walk(module_ast):
@@ -59,10 +59,13 @@ def _collect_imports(
                         from_path = DotPath()
                     if (level := ast_import_from.level) > 0:
                         anchor_depth = len(package_path.parts) - (level - 1)
-                        if anchor_depth < 0:
+                        # A relative import must anchor to at least the
+                        # top-level package; Python raises ImportError otherwise.
+                        if anchor_depth < 1:
                             log.warning(
-                                f'Skipping import from {package_path} because '
-                                f'relative import level goes beyond project.'
+                                f'Skipping relative import in {module_path}, '
+                                f'line {alias.lineno}: it goes beyond the '
+                                f'top-level package.'
                             )
                             continue
                         from_path = (

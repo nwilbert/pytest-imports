@@ -191,17 +191,17 @@ def test_find_matching_imports_returns_line_numbers(imports_root_node):
 @pytest.mark.parametrize(
     ('project_structure', 'via', 'n_matches'),
     [
-        ({'a.py': 'import x'}, 'absolute', 1),
-        ({'a.py': 'from . import x'}, 'absolute', 0),
-        ({'a.py': 'import x'}, 'relative', 0),
-        ({'a.py': 'from . import x'}, 'relative', 1),
-        ({'a.py': 'import x'}, None, 1),
-        ({'a.py': 'from . import x'}, None, 1),
+        ({'p': {'a.py': 'import p.x'}}, 'absolute', 1),
+        ({'p': {'a.py': 'from . import x'}}, 'absolute', 0),
+        ({'p': {'a.py': 'import p.x'}}, 'relative', 0),
+        ({'p': {'a.py': 'from . import x'}}, 'relative', 1),
+        ({'p': {'a.py': 'import p.x'}}, None, 1),
+        ({'p': {'a.py': 'from . import x'}}, None, 1),
     ],
 )
 def test_find_matching_imports_via(imports_root_node, via, n_matches):
-    a = imports_root_node.get(DotPath('a'))
-    matches = list(_find_matching_imports(a, [], 'x', via, imports_root_node))
+    a = imports_root_node.get(DotPath('p.a'))
+    matches = list(_find_matching_imports(a, [], 'p.x', via, imports_root_node))
     assert len(matches) == n_matches
 
 

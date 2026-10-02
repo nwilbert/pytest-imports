@@ -192,7 +192,7 @@ The model is built once per test session (the `imports` fixture is session-scope
 
 Dot paths in rules are always specified as fully qualified absolute paths, regardless of whether relative imports are used in the source. You can optionally use the `via` argument to distinguish between absolute and relative imports.
 
-Note that relative imports from outside the configured project source directory are not supported (because we can't normalize those).
+Note that relative imports from outside the configured project source directory are not supported (because we can't normalize those). Relative imports that Python itself rejects — a relative import in a top-level module, or one that climbs beyond the top-level package — are skipped with a warning.
 
 ### Internal vs. external imports
 

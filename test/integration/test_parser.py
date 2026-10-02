@@ -29,15 +29,6 @@ def project_path(project_structure: dict[str, str | dict], tmp_path: Path) -> Pa
     ('project_structure', 'path', 'import_obj'),
     [
         (
-            {
-                'a': {'b.py': 'from .. import y'},
-            },
-            'a.b',
-            ImportInModule(
-                dot_path=DotPath('y'), line_no=1, level=2, is_from_import=True
-            ),
-        ),
-        (
             {'a': {'b': {'c.py': '...\nfrom .. import y'}}},
             'a.b.c',
             ImportInModule(
@@ -59,21 +50,25 @@ def test_relative_import(project_path: Path, path: DotPath, import_obj):
 
 
 @pytest.mark.parametrize(
-    'project_structure',
+    ('project_structure', 'path'),
     [
-        {
-            'a': {'b.py': 'from ... import y'},
-        }
+        # Python: "attempted relative import beyond top-level package".
+        ({'a': {'b.py': 'from ... import y'}}, 'a.b'),
+        ({'a': {'b.py': 'from .. import y'}}, 'a.b'),
+        ({'a': {'__init__.py': 'from .. import y'}}, 'a'),
+        # Python: "attempted relative import with no known parent package".
+        ({'a.py': 'from . import y'}, 'a'),
+        ({'a.py': 'from .json import y'}, 'a'),
     ],
 )
-def test_relative_import_beyond_base(project_path, caplog):
+def test_relative_import_beyond_top_level_package(project_path, path, caplog):
     base_node = build_import_model([project_path])
     warnings = [
         record for record in caplog.records if record.levelno == logging.WARNING
     ]
     assert len(warnings) == 1
-    assert 'relative import' in warnings[0].msg
-    assert base_node.get(DotPath('a.b')).imports == []
+    assert 'beyond the top-level package' in warnings[0].msg
+    assert base_node.get(DotPath(path)).imports == []
 
 
 @pytest.mark.parametrize(
