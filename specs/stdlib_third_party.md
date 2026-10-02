@@ -1,7 +1,5 @@
 # Spec: `stdlib()` and `third_party()` targets
 
-Status: proposal.
-
 ## Motivation
 
 The most common external-dependency rule is "this package must not
@@ -103,7 +101,7 @@ Unit tests (`test/unit/test_query.py`):
 - `tomllib` matches `stdlib()` on 3.11+ and `third_party()` on 3.10
   (branch on `sys.version_info`; the `pytest_compat` matrix covers
   both).
-- Failure messages for `must_not_import(third_party())` and
+- Failure messages (`test/unit/test_plugin.py`) for `must_not_import(third_party())` and
   `must_only_import(..., among=third_party())`.
 
 Architecture test (`test/arch/test_imports.py`): tighten

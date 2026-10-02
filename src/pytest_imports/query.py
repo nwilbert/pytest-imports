@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Literal
@@ -24,7 +25,17 @@ class Internal:
     """Target matching any import resolving inside the configured source roots."""
 
 
-Target = str | Descendants | Internal
+@dataclass(frozen=True)
+class Stdlib:
+    """Target matching any non-internal import of a standard library module."""
+
+
+@dataclass(frozen=True)
+class ThirdParty:
+    """Target matching any import that is neither internal nor stdlib."""
+
+
+Target = str | Descendants | Internal | Stdlib | ThirdParty
 
 # The canonical shared `Internal()` instance, used as the default `among`
 # universe for `must_only_import`.
@@ -50,6 +61,14 @@ def descendants(path: str, *, without: str | list[str] | None = None) -> Descend
 
 def internal() -> Internal:
     return INTERNAL
+
+
+def stdlib() -> Stdlib:
+    return Stdlib()
+
+
+def third_party() -> ThirdParty:
+    return ThirdParty()
 
 
 def must_import(path: Target | list[Target], *, via: Via | None = None) -> MustImport:
@@ -389,17 +408,32 @@ def _match_target(target: Target, dot_path: DotPath, root_node: RootNode) -> boo
                 return False
             return not any(dot_path.is_relative_to(tp / DotPath(w)) for w in without)
         case Internal():
-            # An import is internal if it resolves to a module under the
-            # configured source roots. Because the parser stores the imported
-            # name as the last part of `dot_path` (so `from pkg.b import x`
-            # yields `pkg.b.x` even when `x` is a symbol, not a submodule), we
-            # check whether any prefix of `dot_path` is a known module.
-            candidate = dot_path
-            while candidate.parts:
-                if root_node.get(candidate) is not None:
-                    return True
-                candidate = candidate.parent
-            return False
+            return _is_internal(dot_path, root_node)
+        case Stdlib():
+            return not _is_internal(dot_path, root_node) and _is_stdlib(dot_path)
+        case ThirdParty():
+            return not _is_internal(dot_path, root_node) and not _is_stdlib(dot_path)
+
+
+def _is_internal(dot_path: DotPath, root_node: RootNode) -> bool:
+    # An import is internal if it resolves to a module under the configured
+    # source roots. Because the parser stores the imported name as the last
+    # part of `dot_path` (so `from pkg.b import x` yields `pkg.b.x` even when
+    # `x` is a symbol, not a submodule), we check whether any prefix of
+    # `dot_path` is a known module.
+    candidate = dot_path
+    while candidate.parts:
+        if root_node.get(candidate) is not None:
+            return True
+        candidate = candidate.parent
+    return False
+
+
+def _is_stdlib(dot_path: DotPath) -> bool:
+    # Follows the running interpreter's version (e.g. `tomllib` is stdlib
+    # only on 3.11+), but not its platform: the set lists every platform's
+    # modules.
+    return dot_path.parts[0] in sys.stdlib_module_names
 
 
 def _format_target(target: Target) -> str:
@@ -412,6 +446,10 @@ def _format_target(target: Target) -> str:
             return f'descendants of {p}'
         case Internal():
             return 'any internal module'
+        case Stdlib():
+            return 'any stdlib module'
+        case ThirdParty():
+            return 'any third-party module'
 
 
 def _via_to_absolute(via: Via | None) -> bool | None:

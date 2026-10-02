@@ -9,6 +9,8 @@ from pytest_imports import (
     must_only_import,
     project,
     scope,
+    stdlib,
+    third_party,
 )
 
 
@@ -513,3 +515,37 @@ def test_violations_matches_check_assertion_content(imports):
         imports.check(rules)
     for failure in failures:
         assert failure in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'a.py': 'import os\nimport requests\nimport b', 'b.py': ''}],
+)
+def test_check_must_not_import_third_party(imports):
+    failures = imports.violations({scope('a'): must_not_import(third_party())})
+    assert len(failures) == 1
+    assert 'must not import any third-party module — found requests' in failures[0]
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'a.py': 'import fastapi\nimport requests\nimport os'}],
+)
+def test_check_must_only_import_among_third_party(imports):
+    failures = imports.violations(
+        {scope('a'): must_only_import('fastapi', among=third_party())}
+    )
+    assert len(failures) == 1
+    assert 'among any third-party module — found requests' in failures[0]
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'a.py': 'from __future__ import annotations\nimport json\nimport socket'}],
+)
+def test_check_must_only_import_among_stdlib(imports):
+    failures = imports.violations(
+        {scope('a'): must_only_import(['__future__', 'json'], among=stdlib())}
+    )
+    assert len(failures) == 1
+    assert 'among any stdlib module — found socket' in failures[0]

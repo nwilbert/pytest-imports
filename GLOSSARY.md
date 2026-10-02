@@ -79,9 +79,19 @@ use these words less rigorously and can read as if `submodule` and
   may enter the namespace under. See Python reference:
   [import statement](https://docs.python.org/3/reference/import.html#the-import-statement).
 - **internal import** — An import whose target resolves inside the
-  configured project source paths.
-- **external import** — An import whose target is the standard library or
-  an installed third-party package.
+  configured project source paths. Matched by the `internal()` target.
+  Relative imports are always internal.
+- **external import** — An import that is not internal: either a
+  stdlib import or a third-party import.
+- **stdlib import** — An external import whose top-level name is in
+  `sys.stdlib_module_names` of the interpreter running pytest (so the
+  set follows the Python version, e.g. `tomllib` from 3.11). Includes
+  private modules such as `_thread`, and `__future__`. Matched by the
+  `stdlib()` target.
+- **third-party import** — An external import that is not a stdlib
+  import, typically of an installed package. Matched by the
+  `third_party()` target. Internal, stdlib and third-party imports are
+  disjoint and together cover every import.
 - **private name** — Any dotted-path part beginning with `_` (single or
   double underscore), with the sole exception of `__future__`.
 
@@ -92,14 +102,16 @@ use these words less rigorously and can read as if `submodule` and
 - **predicate** — A rule object (`MustImport`, `MustNotImport`,
   `MustNotImportPrivate`, …) applied to a scope. Built via factory
   functions like `must_import` and `must_not_import`.
-- **target** — An import target selector accepted by `must_import` and
-  `must_not_import`: a dotted path string, or one of the constructors
-  `descendants(p)` (descendants of `p`, excluding `p` itself) or
-  `internal()` (any module under the configured source roots). A bare
-  dotted-path string is a **string target**; `descendants(...)` and
-  `internal()` produce **structured targets** (the `Descendants` and
-  `Internal` dataclasses). Use these two sub-terms when the distinction
-  matters; both are targets.
+- **target** — An import target selector accepted by `must_import`,
+  `must_not_import`, `must_not_import_private` (as a filter) and
+  `must_only_import` (both `allowed` and `among`): a dotted path string,
+  or one of the constructors `descendants(p)` (descendants of `p`,
+  excluding `p` itself), `internal()` (any internal import), `stdlib()`
+  (any stdlib import) or `third_party()` (any third-party import). A
+  bare dotted-path string is a **string target**; the constructors
+  produce **structured targets** (the `Descendants`, `Internal`,
+  `Stdlib` and `ThirdParty` dataclasses). Use these two sub-terms when
+  the distinction matters; both are targets.
 - **project** — The full set of modules under the configured source
   roots. Returned by `project()` as a special scope. Whether this
   includes a `test/` or `tests/` directory depends on layout: with a

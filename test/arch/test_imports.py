@@ -6,6 +6,7 @@ from pytest_imports import (
     must_only_import,
     project,
     scope,
+    third_party,
 )
 
 
@@ -55,7 +56,8 @@ def test_external_dependencies(imports):
     imports.check(
         {
             scope('pytest_imports', without='parser'): must_not_import('ast'),
-            scope('pytest_imports', without='plugin'): must_not_import('pytest'),
+            scope('pytest_imports', without='plugin'): must_not_import(third_party()),
+            scope('pytest_imports'): must_only_import('pytest', among=third_party()),
         }
     )
 

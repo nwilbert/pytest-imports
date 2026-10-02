@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from pytest_imports.model import DotPath, RootNode
@@ -5,6 +7,8 @@ from pytest_imports.query import (
     Descendants,
     Internal,
     MustAlias,
+    Stdlib,
+    ThirdParty,
     _find_alias_violations,
     _find_matching_imports,
     _find_matching_private_imports,
@@ -19,6 +23,8 @@ from pytest_imports.query import (
     must_only_import,
     project,
     scope,
+    stdlib,
+    third_party,
 )
 
 
@@ -445,3 +451,101 @@ def test_find_matching_private_imports_nested(imports_root_node):
     matches = list(_find_matching_private_imports(r, [], (), imports_root_node))
     assert len(matches) == 1
     assert 'a.py' in str(matches[0][0].file_path)
+
+
+def test_stdlib_factory():
+    assert stdlib() == Stdlib()
+
+
+def test_third_party_factory():
+    assert third_party() == ThirdParty()
+
+
+@pytest.mark.parametrize('dot_path', ['os', 'os.path', '_thread', '__future__'])
+def test_match_target_stdlib(dot_path):
+    root = RootNode()
+    assert _match_target(stdlib(), DotPath(dot_path), root)
+    assert not _match_target(third_party(), DotPath(dot_path), root)
+
+
+@pytest.mark.parametrize('dot_path', ['requests', 'tomli.loads'])
+def test_match_target_third_party(dot_path):
+    root = RootNode()
+    assert _match_target(third_party(), DotPath(dot_path), root)
+    assert not _match_target(stdlib(), DotPath(dot_path), root)
+
+
+def test_match_target_tomllib_depends_on_python_version():
+    expected = stdlib() if sys.version_info >= (3, 11) else third_party()
+    assert _match_target(expected, DotPath('tomllib'), RootNode())
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'logging': {'__init__.py': '', 'handlers.py': ''}}],
+)
+def test_match_target_internal_shadows_stdlib(imports_root_node):
+    dot_path = DotPath('logging.handlers')
+    assert _match_target(internal(), dot_path, imports_root_node)
+    assert not _match_target(stdlib(), dot_path, imports_root_node)
+    assert not _match_target(third_party(), dot_path, imports_root_node)
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'pkg': {'__init__.py': '', 'a.py': 'from .json import x'}}],
+)
+def test_relative_import_of_missing_module_is_internal(imports_root_node):
+    pkg_a = imports_root_node.get(DotPath('pkg.a'))
+    (import_by,) = pkg_a.imports
+    assert import_by.dot_path == DotPath('pkg.json.x')
+    assert _match_target(internal(), import_by.dot_path, imports_root_node)
+    assert not _match_target(stdlib(), import_by.dot_path, imports_root_node)
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [
+        {
+            'logging.py': '',
+            'pkg': {
+                '__init__.py': '',
+                'a.py': """
+                    from __future__ import annotations
+                    import os.path
+                    import _thread
+                    import logging
+                    import requests
+                    from fastapi import FastAPI
+                    from . import b
+                    from .missing import y
+                    import pkg.b
+                """,
+                'b.py': '',
+            },
+        }
+    ],
+)
+def test_internal_stdlib_third_party_partition_imports(imports_root_node):
+    imports = imports_root_node.get(DotPath('pkg.a')).imports
+    classes = [internal(), stdlib(), third_party()]
+    matched = [
+        [t for t in classes if _match_target(t, i.dot_path, imports_root_node)]
+        for i in imports
+    ]
+    assert matched == [
+        [stdlib()],
+        [stdlib()],
+        [stdlib()],
+        [internal()],
+        [third_party()],
+        [third_party()],
+        [internal()],
+        [internal()],
+        [internal()],
+    ]
+
+
+def test_format_target_stdlib_and_third_party():
+    assert _format_target(stdlib()) == 'any stdlib module'
+    assert _format_target(third_party()) == 'any third-party module'

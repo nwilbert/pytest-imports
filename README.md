@@ -44,6 +44,8 @@ Quick reference of the building blocks used below:
 | [`must_alias(path, alias)`](#example-alias) | predicate | Require that `path`, when it enters the namespace, does so only under `alias` (e.g. `numpy as np`). |
 | [`descendants(path, without=...)`](#example-descendants) | target | Match descendants of `path` but not `path` itself; `without=` carves out subtrees. |
 | [`internal()`](#example-internal) | target | Match any import resolving inside the source roots. |
+| [`stdlib()`](#example-stdlib) | target | Match any non-internal import of a standard library module. |
+| [`third_party()`](#example-stdlib) | target | Match any import that is neither internal nor stdlib. |
 | [`via='absolute'` / `via='relative'`](#example-via) | option | Restrict a predicate to one import style. |
 
 <a id="example-layered"></a>
@@ -138,6 +140,31 @@ def test_internal_imports_are_relative(imports):
 
 Note: This is similar to ruff's [TID252 (relative-imports)](https://docs.astral.sh/ruff/rules/relative-imports/#relative-imports-tid252) rule, but works in the opposite direction — TID252 bans relative imports in favor of absolute ones, while `must_not_import(internal(), via='absolute')` bans absolute internal imports in favor of relative ones.
 
+<a id="example-stdlib"></a>
+```python
+from pytest_imports import (
+    internal, must_not_import, must_not_import_private, must_only_import,
+    project, scope, stdlib, third_party,
+)
+
+def test_external_dependencies(imports):
+    imports.check({
+        # Pure core: stdlib and internal imports only.
+        scope('myapp.domain'): must_not_import(third_party()),
+        # The only third-party dependency the API layer may use is fastapi.
+        scope('myapp.api'): must_only_import('fastapi', among=third_party()),
+        # Ignore private names reached through the stdlib (_thread, os._exit, …).
+        project(): must_not_import_private([internal(), third_party()]),
+        # The sandboxed plugin layer may only use these stdlib modules.
+        scope('myapp.plugins'): must_only_import(
+            ['__future__', 'json', 'pathlib'], among=stdlib()
+        ),
+    })
+```
+`stdlib()` and `third_party()` are target helpers that, together with `internal()`, split every import into three disjoint classes — see [Internal, stdlib and third-party imports](#internal-stdlib-and-third-party-imports). They let you state "no third-party dependencies here" without listing every installed package, and without the list going stale when someone adds a dependency. Note that `__future__` counts as a stdlib module, so a stdlib allowlist must name it to permit `from __future__ import annotations`.
+
+Stdlib membership follows the Python version running pytest: `tomllib` is third-party on 3.10, and `distutils` is third-party on 3.12+. (It does not depend on the platform — `winreg` is stdlib everywhere.) If your code has a version-dependent fallback such as `try: import tomllib` / `except ImportError: import tomli`, phrase the rule as an allowlist rather than a ban, so it passes on every version: `must_only_import(['tomllib', 'tomli'], among=third_party())`.
+
 ### Reporting violations without failing
 
 For dashboards, ratchets, or benchmarks, use `imports.violations(rules)` instead of `imports.check(rules)`. It accepts the same rules dictionary and returns the list of violation messages without raising:
@@ -194,9 +221,17 @@ Dot paths in rules are always specified as fully qualified absolute paths, regar
 
 Note that relative imports from outside the configured project source directory are not supported (because we can't normalize those). Relative imports that Python itself rejects — a relative import in a top-level module, or one that climbs beyond the top-level package — are skipped with a warning.
 
-### Internal vs. external imports
+### Internal, stdlib and third-party imports
 
-Both imports from inside your project and from external packages (standard library or installed packages) are supported.
+Every import falls into exactly one of three classes, each with a matching [target](#example-stdlib):
+
+| Target | Matches |
+| --- | --- |
+| `internal()` | The import resolves to a module under the configured source roots. |
+| `stdlib()` | Not internal, and the top-level name is in [`sys.stdlib_module_names`](https://docs.python.org/3/library/sys.html#sys.stdlib_module_names). |
+| `third_party()` | Neither internal nor stdlib. |
+
+Internal wins: if your project has its own top-level `logging` package, imports of it match `internal()` only. Relative imports are always internal.
 
 ### Configuration
 

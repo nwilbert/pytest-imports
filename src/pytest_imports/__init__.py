@@ -8,6 +8,8 @@ from .query import (
     must_only_import,
     project,
     scope,
+    stdlib,
+    third_party,
 )
 
 __all__ = [
@@ -20,4 +22,6 @@ __all__ = [
     'must_only_import',
     'project',
     'scope',
+    'stdlib',
+    'third_party',
 ]
