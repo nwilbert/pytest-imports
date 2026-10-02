@@ -35,7 +35,9 @@ imports.check({
     # Ignore private names reached through the stdlib (_thread, os._exit, …).
     project(): must_not_import_private([internal(), third_party()]),
     # The sandboxed plugin layer may only use these stdlib modules.
-    scope('myapp.plugins'): must_only_import(['json', 'pathlib'], among=stdlib()),
+    scope('myapp.plugins'): must_only_import(
+        ['__future__', 'json', 'pathlib'], among=stdlib()
+    ),
 })
 ```
 
@@ -43,19 +45,23 @@ imports.check({
 
 - **Stdlib membership** is `dot_path.parts[0] in sys.stdlib_module_names`
   (Python ≥ 3.10, which matches `requires-python`). The set includes
-  private modules (`_thread`) and `__future__`.
+  private modules (`_thread`) and `__future__`. The latter means a
+  stdlib allowlist (`must_only_import([...], among=stdlib())`) must
+  list `'__future__'` to permit `from __future__ import annotations`.
+  Excluding it from `stdlib()` instead would push it into
+  `third_party()`, which is worse.
 - **Internal wins.** If a project has its own `logging` package, imports
   of it match `internal()` only, which keeps the three classes
   disjoint.
-- **Relative imports** inside a package resolve under that package, so
-  they are internal even when the imported module does not exist. The
-  one exception is a relative import of a missing module from a
-  top-level module (`from . import missing` in `src/foo.py`). It
-  resolves to the bare name `missing` and falls through to
-  classification by name. This is accepted: the import is broken anyway.
-- **Interpreter-dependent.** Classification follows the interpreter
-  running pytest: `tomllib` is third-party on 3.10, and `distutils` is
-  third-party on 3.12+. Document this. Where it matters (e.g. a
+- **Relative imports** are always internal: they resolve under an
+  existing package, even when the imported module does not exist. The
+  parser skips (with a warning) relative imports that go beyond the
+  top-level package, which Python rejects anyway.
+- **Interpreter-dependent.** Classification follows the version of the
+  interpreter running pytest: `tomllib` is third-party on 3.10, and
+  `distutils` is third-party on 3.12+. It does not depend on the
+  platform: `sys.stdlib_module_names` lists platform-specific modules
+  (`winreg`, `fcntl`) everywhere. Document this. Where it matters (e.g. a
   `try: import tomllib / except ImportError: import tomli` fallback),
   phrase the rule as an allowlist, not a ban:
   `must_only_import(['tomllib', 'tomli'], among=third_party())`.
@@ -94,13 +100,18 @@ Unit tests (`test/unit/test_query.py`):
   import x`) is internal, not stdlib.
 - Every import in a mixed fixture matches exactly one of the three
   targets.
+- `tomllib` matches `stdlib()` on 3.11+ and `third_party()` on 3.10
+  (branch on `sys.version_info`; the `pytest_compat` matrix covers
+  both).
 - Failure messages for `must_not_import(third_party())` and
   `must_only_import(..., among=third_party())`.
 
 Architecture test (`test/arch/test_imports.py`): tighten
 `scope('pytest_imports', without='plugin'): must_not_import('pytest')`
-to `must_not_import(third_party())`. This is the motivating rule,
-dogfooded.
+to `must_not_import(third_party())`, and add
+`scope('pytest_imports'): must_only_import('pytest', among=third_party())`
+so the plugin module is covered too. This is the motivating rule,
+dogfooded in both its ban and allowlist forms.
 
 ## Docs
 
@@ -110,17 +121,28 @@ dogfooded.
   the three classes.
 - `GLOSSARY.md`: add **stdlib import** and **third-party import**
   (splitting **external import**), and list the new targets under
-  **target**.
+  **target**. That entry's "accepted by `must_import` and
+  `must_not_import`" is already out of date; list all predicates that
+  take targets.
 - `AGENTS.md`: update the `Target` union in the architecture notes.
 
 ## Out of scope
 
-- **`external()`** (= stdlib ∪ third-party). Lists already cover it
-  wherever a tuple of targets is accepted. The one gap is `among`, which
-  takes a single target. If that gap matters, widen `among` to accept a
+- **`external()`** (= stdlib ∪ third-party). A list covers it wherever
+  a list of targets is combined disjunctively (`must_not_import`,
+  `must_not_import_private`, `must_only_import`'s `allowed`). There are
+  two gaps: `among` takes a single target, and `must_import` is
+  conjunctive, so `must_import([stdlib(), third_party()])` requires
+  both. Neither looks important; if one does, widen `among` to accept a
   list rather than adding more target types.
 - **Configurable stdlib set** (e.g. for checking against a different
   Python version than the one running pytest). Add only if someone asks.
 - **Ruff compilation**: if the `ruff_compile.md` proposal is
-  implemented, it should skip `third_party()`, because it is an open set
-  that `banned-api` cannot express.
+  implemented, it should skip rules using either new target at first.
+  `third_party()` is an open set that `banned-api` cannot express.
+  `stdlib()` could expand to `sys.stdlib_module_names` minus names
+  shadowed by internal modules, but the generated config would then
+  depend on the Python version, so `matches_disk()` could disagree
+  across the CI matrix. Neither works as `among` for `must_only_import`,
+  whose compilation walks the model, and the model does not contain
+  external modules.
