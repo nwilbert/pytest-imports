@@ -1,11 +1,13 @@
-
 # pytest-imports
 
 *A pythonic derivative of [ArchUnit](https://www.archunit.org), in the form of a [pytest](https://www.pytest.org) plugin.*
 
-The idea is to write automated tests for the architecture aspects of your Python project. This plugin specifically covers import statements in your Python code, enabling you to check the dependencies in your project.
+pytest-imports lets you write tests for the architecture of your Python project by checking its import statements.
 
-### Simple example
+## Quick start
+
+Install `pytest-imports` with the package manager of your choice (e.g. pip or uv). It works out of the box for `src/` and flat layouts (see [Configuration](#configuration)), so you can use the `imports` fixture right away:
+
 ```python
 from pytest_imports import must_import, must_not_import, scope
 
@@ -17,38 +19,33 @@ def test_imports(imports):
 ```
 This checks that module `foo` imports `bar`, and that module `baz` does not import `qux`.
 
-Both `must_import` and `must_not_import` are inclusive with regards to descendants
-(i.e., if there is an import of `foo.foo2` in a descendant `bar.bar2` then the rule is satisfied).
-See [Terminology](#terminology) for what we mean by *descendant*, *submodule*, and *subpackage*.
+Rules include descendants on both sides: an import of `bar.x` anywhere in `foo` or its descendants satisfies `scope('foo'): must_import('bar')`. Dot paths in rules are always fully qualified, even where the source uses relative imports. See [Terminology](#terminology) for what we mean by *descendant*, *submodule* and *subpackage*.
 
-### Installation & use
-
-Install `pytest-imports` via the Python package manager of your choice (e.g., pip or uv).
-
-If your project structure is "normal" then you can simply start using the `imports` fixture in your tests right away, as seen above.
-
-### Complex examples
-Dot paths in rules are always specified as fully qualified absolute paths (using `.` as separator). See [Terminology](#terminology) and [GLOSSARY.md](GLOSSARY.md) for the project's vocabulary.
-
-Quick reference of the building blocks used below:
+## Building blocks
 
 | Name | Kind | Purpose |
 |---|---|---|
 | [`scope(path)`](#example-layered) | scope | Restrict a rule to `path` and its descendants. |
 | [`scope(path, without=...)`](#example-layered) | scope | Same, but exclude named submodules or subpackages. |
 | [`project()`](#example-private) | scope | All modules under the configured source roots. |
-| [`must_import(target)`](#example-layered) | predicate | Require an import of `target` (or a descendant) in scope. Accepts a list of targets (all required). |
-| [`must_not_import(target)`](#example-layered) | predicate | Forbid imports of `target` (or a descendant) in scope. Accepts a list of targets (any forbidden). |
-| [`must_only_import(allowed, among=internal())`](#example-only) | predicate | Allow only the listed targets within `among`; anything else inside `among` is a violation. |
-| [`must_not_import_private(target=None)`](#example-private) | predicate | Forbid imports of any private (`_`-prefixed) name; an optional target filter narrows which private imports are flagged. |
-| [`must_alias(path, alias)`](#example-alias) | predicate | Require that `path`, when it enters the namespace, does so only under `alias` (e.g. `numpy as np`). |
-| [`descendants(path, without=...)`](#example-descendants) | target | Match descendants of `path` but not `path` itself; `without=` carves out subtrees. |
+| [`must_import(targets)`](#example-layered) | predicate | Require an import of the target (or a descendant) in scope. With a list, every target is required. |
+| [`must_not_import(targets)`](#example-layered) | predicate | Forbid imports of the target (or a descendant) in scope. With a list, any target is forbidden. |
+| [`must_only_import(allowed, among=internal())`](#example-only) | predicate | Within `among`, allow only the listed targets. |
+| [`must_not_import_private(targets)`](#example-private) | predicate | Forbid imports of private (`_`-prefixed) names; the optional targets narrow which ones are flagged. |
+| [`must_alias(path, alias)`](#example-alias) | predicate | Require that `path` enters a namespace only under `alias` (e.g. `numpy as np`). |
+| [`descendants(path, without=...)`](#example-descendants) | target | Match descendants of `path` but not `path` itself. |
 | [`internal()`](#example-internal) | target | Match any import resolving inside the source roots. |
 | [`stdlib()`](#example-stdlib) | target | Match any non-internal import of a standard library module. |
 | [`third_party()`](#example-stdlib) | target | Match any import that is neither internal nor stdlib. |
 | [`via='absolute'` / `via='relative'`](#example-via) | option | Restrict a predicate to one import style. |
 
+A *target* is either a dotted-path string or one of the target helpers above.
+
+## Examples
+
 <a id="example-layered"></a>
+### Layered architecture
+
 ```python
 from pytest_imports import must_import, must_not_import, scope
 
@@ -58,16 +55,9 @@ def test_layered_architecture(imports):
         scope('myapp.api'): must_import('myapp.core'),
     })
 ```
-`scope('myapp', without='api')` covers all of `myapp` except `myapp.api` and its descendants. The excluded name can be a subpackage (`api/`) or a `.py` module file (`plugin.py`) — anything that appears as a direct or nested name in the tree. Pass a list to exclude multiple paths: `without=['api', 'adapters']`. Each entry can also be a dotted path into a deeper subtree, e.g. `without='db.migrations'` excludes only `myapp.db.migrations` (and its descendants) while leaving the rest of `myapp.db` in scope.
+`scope('myapp', without='api')` covers all of `myapp` except `myapp.api` and its descendants. The excluded name can be a subpackage (`api/`) or a module file (`plugin.py`). Pass a list to exclude several (`without=['api', 'adapters']`), or a dotted path to exclude a deeper subtree (`without='db.migrations'` leaves the rest of `myapp.db` in scope).
 
-<a id="example-via"></a>
-```python
-def test_no_relative_imports_in_public_api(imports):
-    imports.check({
-        scope('myapp.api'): must_not_import('myapp', via='relative'),
-    })
-```
-Via the `via` argument you can restrict a rule to only absolute (`via='absolute'`) or only relative (`via='relative'`) imports. Omitting `via` matches both.
+### Several rules per scope
 
 ```python
 def test_multiple_rules_per_scope(imports):
@@ -78,42 +68,24 @@ def test_multiple_rules_per_scope(imports):
         ],
     })
 ```
-A predicate accepts a list of targets, so a fan-out of "forbid each of these" collapses to one `must_not_import(['sqlalchemy', 'flask'])` — disjunctive, so an import of either is a violation, and the failure message names which one matched. `must_import([...])` is conjunctive: every listed target must be imported somewhere in scope. A list of *predicates* (as above) applies several different rules to the same scope; all failures are reported together rather than stopping at the first violation.
+- A list of *targets* in `must_not_import` is disjunctive: an import of either is a violation, and the failure message names which one matched.
+- A list of targets in `must_import` is conjunctive: every target must be imported somewhere in scope.
+- A list of *predicates* applies several rules to one scope. All failures are reported together.
 
-<a id="example-only"></a>
+<a id="example-via"></a>
+### Absolute vs. relative imports
+
 ```python
-from pytest_imports import must_only_import, scope
-
-def test_api_layer_imports(imports):
+def test_no_relative_imports_in_public_api(imports):
     imports.check({
-        scope('myapp.api'): must_only_import(['myapp.core', 'myapp.schemas']),
+        scope('myapp.api'): must_not_import('myapp', via='relative'),
     })
 ```
-`must_only_import` is the allowlist complement of `must_not_import`: within a bounded universe of imports, only the listed targets are permitted, and anything else inside that universe is a violation. The universe is the `among` parameter, which defaults to `internal()` — so the rule above says "`myapp.api` may only reach into `myapp.core` and `myapp.schemas`," while leaving stdlib and third-party imports (`os`, `fastapi`, …) untouched because they fall outside `internal()`. Each `allowed` entry is a [target](#example-descendants), so `descendants(...)` and `internal()` work there too, and a single target may be passed without the list. Override `among` to widen or narrow the universe, e.g. `among=descendants('myapp')` to police only `myapp.*` imports, or `among=third_party()` to allowlist external dependencies instead (see [`stdlib()` and `third_party()`](#example-stdlib)). An empty allowlist (`must_only_import([])`) forbids every import within `among` — a guardrail for a leaf module that must not reach back into the project.
-
-<a id="example-private"></a>
-```python
-from pytest_imports import must_not_import_private, project
-
-def test_no_private_imports(imports):
-    imports.check({
-        project(): must_not_import_private(),
-    })
-```
-`must_not_import_private()` checks that no module imports a private name — any dotted-path part starting with `_` or `__`, except the standard `__future__` module. `project()` is a special scope covering all modules under the configured source root — see [Configuration](#configuration) for which paths that includes (notably, with a `src/` layout `project()` does *not* include test folders, but with a flat layout it does). The optional argument is a [target](#example-descendants) (or list of targets) that filters which private imports are flagged: `must_not_import_private('myapp')` restricts to a specific package, `must_not_import_private(internal())` flags only private imports of project-internal names (leaving stdlib and third-party `_`-prefixed imports alone), `must_not_import_private([internal(), third_party()])` exempts only the stdlib, and `must_not_import_private(descendants('myapp.capture'))` narrows to a subtree.
-
-<a id="example-alias"></a>
-```python
-from pytest_imports import must_alias, project
-
-def test_numpy_alias(imports):
-    imports.check({
-        project(): must_alias('numpy', 'np'),
-    })
-```
-`must_alias('numpy', 'np')` enforces a conventional import alias: whenever `numpy` would enter a module's namespace under any other name, the import is flagged. It rejects `import numpy` (binds the bare name), `import numpy as foo` (wrong alias), `import numpy.linalg` (Python binds the top-level `numpy`), and `import numpy.linalg as np` (the canonical alias pointing at a submodule), while accepting `import numpy as np` and `import numpy.linalg as nl`. Unlike `must_import`, it does **not** require `numpy` to be imported — it only constrains *how* it is imported when it appears. The rule is namespace-oriented, so from-imports of members and submodules (`from numpy import array`, `from numpy.linalg import inv`) are allowed because they don't bind `numpy` itself; a wildcard `from numpy import *` is flagged as namespace pollution.
+`via='absolute'` or `via='relative'` restricts a rule to that import style; without `via`, both match.
 
 <a id="example-descendants"></a>
+### Encapsulating a package's internals
+
 ```python
 from pytest_imports import descendants, must_not_import, scope
 
@@ -123,11 +95,13 @@ def test_capture_internals_are_encapsulated(imports):
             must_not_import(descendants('myapp.capture')),
     })
 ```
-`descendants('myapp.capture')` is a target helper that matches the descendants of `myapp.capture` (`myapp.capture.parser`, `myapp.capture.config`, …) but **not** `myapp.capture` itself. This lets the rest of `myapp` use the `myapp.capture` public surface (`import myapp.capture`) while keeping its internals private. A plain string target like `'myapp.capture'` would also flag `import myapp.capture`, which is usually not what you want here.
+`descendants('myapp.capture')` matches `myapp.capture.parser`, `myapp.capture.config`, … but **not** `myapp.capture` itself. So the rest of `myapp` may use the public surface (`import myapp.capture`) but not the internals. The plain string `'myapp.capture'` would flag both.
 
-Pass `without=` to carve subtrees out of the match, interpreted relative to the path — `descendants('myapp.contrib', without='admin')` matches everything under `myapp.contrib` except `myapp.contrib.admin` and its descendants. It accepts the same shapes as `scope(without=...)`: a single string, a list (`without=['admin', 'gis']`), or a dotted nested path (`without='admin.widgets'`). This is the target-side mirror of `scope(path, without=...)`, and pairs naturally with [`must_only_import`](#example-only) to express "allow everything under X except Y".
+`without=` carves subtrees out of the match, relative to the path: `descendants('myapp.contrib', without='admin')` matches everything under `myapp.contrib` except `myapp.contrib.admin` and its descendants. It takes the same shapes as `scope(without=...)`, and pairs well with [`must_only_import`](#example-only) to say "allow everything under X except Y".
 
 <a id="example-internal"></a>
+### Internal imports
+
 ```python
 from pytest_imports import internal, must_not_import, project
 
@@ -136,11 +110,66 @@ def test_internal_imports_are_relative(imports):
         project(): must_not_import(internal(), via='absolute'),
     })
 ```
-`internal()` is a target helper that matches every import whose target resolves to a module under the configured source roots. Combined with `via='absolute'` this enforces project-wide that all internal imports are written as relative imports — e.g. `from .aaa import ...` rather than `from myapp.core.aaa import ...`. Unlike a parent-package-only check, this also flags an absolute import of `myapp.other` from `myapp.core.bbb`.
+`internal()` matches every import that resolves to a module under the configured source roots. With `via='absolute'`, this rule requires all internal imports to be relative: `from .aaa import ...` rather than `from myapp.core.aaa import ...`, including across packages (e.g. `myapp.other` imported from `myapp.core.bbb`).
 
-Note: This is similar to ruff's [TID252 (relative-imports)](https://docs.astral.sh/ruff/rules/relative-imports/#relative-imports-tid252) rule, but works in the opposite direction — TID252 bans relative imports in favor of absolute ones, while `must_not_import(internal(), via='absolute')` bans absolute internal imports in favor of relative ones.
+This is the opposite of ruff's [TID252 (relative-imports)](https://docs.astral.sh/ruff/rules/relative-imports/#relative-imports-tid252), which bans relative imports in favor of absolute ones.
+
+<a id="example-only"></a>
+### Allowlists
+
+```python
+from pytest_imports import must_only_import, scope
+
+def test_api_layer_imports(imports):
+    imports.check({
+        scope('myapp.api'): must_only_import(['myapp.core', 'myapp.schemas']),
+    })
+```
+`must_only_import` is the allowlist counterpart of `must_not_import`: within a universe of imports, only the listed targets are allowed.
+
+- The universe is `among`, which defaults to `internal()`. So the rule above says "`myapp.api` may only reach into `myapp.core` and `myapp.schemas`", and leaves stdlib and third-party imports alone.
+- Change `among` to narrow or shift the universe, e.g. `among=descendants('myapp')` to police only `myapp.*`, or `among=third_party()` to allowlist external dependencies (see [below](#example-stdlib)).
+- An empty allowlist, `must_only_import([])`, forbids every import within `among`: a guardrail for a leaf module that must not reach back into the project.
+
+<a id="example-private"></a>
+### Private imports
+
+```python
+from pytest_imports import must_not_import_private, project
+
+def test_no_private_imports(imports):
+    imports.check({
+        project(): must_not_import_private(),
+    })
+```
+`must_not_import_private()` flags any import with a dotted-path part starting with `_` (except `__future__`). [`project()`](#configuration) covers every module under the source roots. Optional targets narrow which private imports are flagged:
+
+- `must_not_import_private('myapp')`: only those from `myapp`.
+- `must_not_import_private(descendants('myapp.capture'))`: only those from that subtree.
+- `must_not_import_private(internal())`: only those of project modules.
+- `must_not_import_private([internal(), third_party()])`: all except the stdlib.
+
+<a id="example-alias"></a>
+### Import aliases
+
+```python
+from pytest_imports import must_alias, project
+
+def test_numpy_alias(imports):
+    imports.check({
+        project(): must_alias('numpy', 'np'),
+    })
+```
+`must_alias('numpy', 'np')` flags any import that brings `numpy` into a module's namespace under another name:
+
+- Rejected: `import numpy` (bare name), `import numpy as foo` (wrong alias), `import numpy.linalg` (binds the bare `numpy`), `import numpy.linalg as np` (`np` bound to a submodule), and `from numpy import *`.
+- Accepted: `import numpy as np`, `import numpy.linalg as nl`, and from-imports of members or submodules (`from numpy import array`), since they don't bind `numpy` itself.
+
+Unlike `must_import`, it does **not** require `numpy` to be imported at all.
 
 <a id="example-stdlib"></a>
+### Stdlib and third-party dependencies
+
 ```python
 from pytest_imports import (
     internal, must_not_import, must_not_import_private, must_only_import,
@@ -161,13 +190,11 @@ def test_external_dependencies(imports):
         ),
     })
 ```
-`stdlib()` and `third_party()` are target helpers that, together with `internal()`, split every import into three disjoint classes — see [Internal, stdlib and third-party imports](#internal-stdlib-and-third-party-imports). They let you state "no third-party dependencies here" without listing every installed package, and without the list going stale when someone adds a dependency. Note that `__future__` counts as a stdlib module, so a stdlib allowlist must name it to permit `from __future__ import annotations`.
-
-Stdlib membership follows the Python version running pytest: `tomllib` is third-party on 3.10, and `distutils` is third-party on 3.12+. (It does not depend on the platform — `winreg` is stdlib everywhere.) Typing-only modules that exist only in typeshed, such as `_typeshed`, are not in that set and therefore count as third-party. If your code has a version-dependent fallback such as `try: import tomllib` / `except ImportError: import tomli`, phrase the rule as an allowlist rather than a ban, so it passes on every version: `must_only_import(['tomllib', 'tomli'], among=third_party())`.
+`stdlib()` and `third_party()` let you say "no third-party dependencies here" without listing every installed package, so the rule doesn't go stale when a dependency is added. How imports are classified, and the caveats, are described under [Internal, stdlib and third-party imports](#internal-stdlib-and-third-party-imports).
 
 ### Reporting violations without failing
 
-For dashboards, ratchets, or benchmarks, use `imports.violations(rules)` instead of `imports.check(rules)`. It accepts the same rules dictionary and returns the list of violation messages without raising:
+For dashboards, ratchets or benchmarks, use `imports.violations(rules)` instead of `imports.check(rules)`. It takes the same rules and returns the violation messages instead of raising:
 
 ```python
 def test_track_legacy_couplings(imports):
@@ -177,53 +204,30 @@ def test_track_legacy_couplings(imports):
     print(f'{len(failures)} legacy coupling(s) remain')
 ```
 
-`check()` is `violations()` plus an `AssertionError` on non-empty output, so both report the same messages.
+`check()` is `violations()` plus an `AssertionError` when the list is non-empty.
 
 ## Details
 
 ### Terminology
 
-This project keeps a deliberate, consistent vocabulary — see
-[GLOSSARY.md](GLOSSARY.md) for the full list. The most important
-distinctions:
+This project keeps a consistent vocabulary; see [GLOSSARY.md](GLOSSARY.md) for the full list. The key distinctions:
 
-- **submodule** of `X` — a module that is a direct child of package `X`;
-  both `.py` files and subpackages qualify.
-- **subpackage** of `X` — a submodule of `X` that is itself a package.
-  Every subpackage is a submodule.
-- **descendant** of `X` — a module nested under `X` at *any* depth.
-  `a.b.c` is a descendant of `a` but only a submodule of `a.b`.
-
-Rules like `must_import('a.b')` and `must_not_import('a.b')` apply to
-`a.b` and all its descendants.
+- **submodule** of `X`: a direct child of package `X`, either a `.py` file or a subpackage.
+- **subpackage** of `X`: a submodule of `X` that is itself a package.
+- **descendant** of `X`: a module nested under `X` at *any* depth. `a.b.c` is a descendant of `a`, but a submodule only of `a.b`.
 
 ### How it works
 
-This plugin uses the `ast` module from the standard library to analyze the abstract syntax tree of your project. Import statements are collected and normalized when the `imports` fixture is first used in a test session.
+The plugin parses your source files with the standard library's `ast` module and collects their import statements the first time a test uses the `imports` fixture. The analysis is static and superficial:
 
-The analysis is superficial, so there are limitations. Due to the dynamic nature of Python it is easy to circumvent tests if you want to. So we assume that this plugin is used in a "friendly" context.
-
-Note that we don't track how the imported symbols are used. For example, in the case of
-```python
-import a
-...
-a.b()
-```
-you will *not* be able to check that `a.b` is used (e.g., via `must_import('a.b')`).
-
-### Performance
-
-The model is built once per test session (the `imports` fixture is session-scoped), so per-test cost is essentially the cost of evaluating the rules — well under a millisecond for most rules. Building the model is linear in the size of the source tree: as a reference point, the in-repo benchmark against the full Django 5.2 source tree (~2,800 modules, ~18,000 import statements) builds the model in **~2.7 s** on a modern laptop, and even the most expensive project-wide rule (`must_not_import(internal(), via='absolute')`, scanning every import in the project) completes in **~45 ms**. See `benchmark/` and `uv run nox -s benchmark` for the full suite.
-
-### Absolute vs. relative imports
-
-Dot paths in rules are always specified as fully qualified absolute paths, regardless of whether relative imports are used in the source. You can optionally use the `via` argument to distinguish between absolute and relative imports.
-
-Note that relative imports from outside the configured project source directory are not supported (because we can't normalize those). Relative imports that Python itself rejects — a relative import in a top-level module, or one that climbs beyond the top-level package — are skipped with a warning.
+- Python is dynamic, so the rules are easy to circumvent on purpose. The plugin assumes a "friendly" codebase.
+- It does not track how imported names are used. After `import a`, a call to `a.b()` does not count as importing `a.b`.
+- Only files under the [source roots](#configuration) are analyzed.
+- Relative imports that Python itself rejects (one in a top-level module, or one that climbs beyond the top-level package) are skipped with a warning.
 
 ### Internal, stdlib and third-party imports
 
-Every import falls into exactly one of three classes, each with a matching [target](#example-stdlib):
+Every import falls into exactly one of three classes:
 
 | Target | Matches |
 | --- | --- |
@@ -231,51 +235,48 @@ Every import falls into exactly one of three classes, each with a matching [targ
 | `stdlib()` | Not internal, and the top-level name is in [`sys.stdlib_module_names`](https://docs.python.org/3/library/sys.html#sys.stdlib_module_names). |
 | `third_party()` | Neither internal nor stdlib. |
 
-Internal wins: if your project has its own top-level `logging` package, imports of it match `internal()` only. Relative imports are always internal.
+- **Internal wins.** If your project has its own top-level `logging` package, imports of it match `internal()` only. Relative imports are always internal.
+- **`__future__` is stdlib**, so a stdlib allowlist must name it to permit `from __future__ import annotations`.
+- **Typeshed-only modules** such as `_typeshed` are not in `sys.stdlib_module_names`, so they count as third-party.
+- **Stdlib membership depends on the Python version running pytest**, but not on the platform (`winreg` is stdlib everywhere). For example, `tomllib` is third-party on 3.10, and `distutils` is third-party on 3.12+. For a version-dependent fallback such as `try: import tomllib` / `except ImportError: import tomli`, use an allowlist rather than a ban, so the rule passes on every version: `must_only_import(['tomllib', 'tomli'], among=third_party())`.
+
+### Performance
+
+The model is built once per test session, so each test only pays for evaluating its rules, which takes well under a millisecond for most rules. Building the model is linear in the size of the source tree. For reference, the in-repo benchmark against Django 5.2 (~2,800 modules, ~18,000 import statements) builds the model in **~2.7 s** on a modern laptop. Even the most expensive project-wide rule, `must_not_import(internal(), via='absolute')`, which scans every import, takes **~45 ms**. See `benchmark/` and `uv run nox -s benchmark`.
 
 ### Configuration
 
-This plugin uses a simple heuristic to determine the source root of your project:
+The plugin determines the source roots as follows:
 
 1. If `imports_project_paths` is set in the pytest config, use that.
-2. Otherwise, walk up from pytest's rootpath looking for `pyproject.toml`, `setup.cfg`, or `setup.py`.
-3. If a `src/` directory exists next to that config file, use `src/` — this excludes a sibling `test/` or `tests/` directory from the model, so `project()` covers source code only.
-4. Otherwise fall back to the directory containing the config file — which in a flat layout typically *includes* `test/` or `tests/` in the model, and therefore in `project()`.
+2. Otherwise, walk up from pytest's rootpath to find `pyproject.toml`, `setup.cfg` or `setup.py`.
+3. If a `src/` directory exists next to that file, use `src/`. A sibling `test/` or `tests/` directory is then *not* part of the model or of `project()`.
+4. Otherwise, use the directory containing that file. In a flat layout this typically *includes* `test/` or `tests/`.
 
-You can check the resolved source root via the `imports_project_paths` fixture in a test. If the auto-detected scope is not what you want — for example, you have a flat layout but want to exclude tests, or your project uses `src/` but you also want to apply rules to `test/` — set `imports_project_paths` explicitly, or use a narrower scope such as `scope('myapp')` instead of `project()`.
+The `imports_project_paths` fixture shows the resolved source roots. If they are not what you want (say, a flat layout without tests, or a `src/` layout plus `test/`), set `imports_project_paths` explicitly, or use a narrower scope such as `scope('myapp')` instead of `project()`:
 
-Each entry in `imports_project_paths` should normally be an *import root*: the directory you would put on `sys.path`, such as `src/` or the project directory in a flat layout. You may also point at a package directory (one containing `__init__.py`), e.g. `src/myapp`. Then only that package is analyzed, but its modules keep their full dotted names (`myapp.core`, not `core`), so rules are written the same way; note that imports of sibling packages outside it then count as external rather than `internal()`. A directory *without* `__init__.py` is always treated as an import root — the plugin cannot tell it apart from a [namespace package](https://peps.python.org/pep-0420/) — so don't point at a namespace package directly. Entries that repeat or lie inside another entry are skipped with a warning.
-
-To specify the source root in the pytest configuration, if you use a `pyproject.toml` then this looks like:
+```toml
+[tool.pytest.ini_options]  # or [tool.pytest] with pytest 9.0+
+imports_project_paths = ["src", "test"]
 ```
-[tool.pytest.ini_options]
-    imports_project_paths = [
-        "foo/bar",
-    ]
-```
-With pytest 9.0+ you can also use the native TOML table:
-```
-[tool.pytest]
-    imports_project_paths = [
-        "foo/bar",
-    ]
-```
-Other config formats are supported as well, as long as they are supported by pytest.
+Any other config format that pytest supports works too.
 
-### Future plans
+Each entry should normally be an *import root*: the directory you would put on `sys.path`, such as `src/`. You may also point at a package directory (one with an `__init__.py`), such as `src/myapp`. Only that package is then analyzed, but its modules keep their full names (`myapp.core`, not `core`). Imports of sibling packages outside it then count as external rather than `internal()`.
 
-- Add and finetune the available rule building blocks.
-- Optimize the implementation with regards to speed.
-
-## License
-Licensed under the Apache License, Version 2.0 - see LICENSE.md in project root directory.
+- **Namespace packages:** a directory *without* `__init__.py` is always treated as an import root, because it is indistinguishable from a [namespace package](https://peps.python.org/pep-0420/). So don't point at a namespace package directly.
+- **Duplicate or nested entries:** an entry that repeats another, or lies inside another, is skipped with a warning.
 
 ## Related Python libraries
-- https://pypi.org/project/import-linter
-- https://pypi.org/project/pytestarch
-- https://pypi.org/project/pytest-archon
-- https://github.com/jwbargsten/pytest-importson
-- https://pypi.org/project/findimports
-- https://pypi.org/project/pydeps (based on bytecode, not AST)
-- https://docs.python.org/3/library/modulefinder.html (part of standard library, looks at runtime)
-- https://pypi.org/project/archunitpython
+
+- [import-linter](https://pypi.org/project/import-linter)
+- [pytestarch](https://pypi.org/project/pytestarch)
+- [pytest-archon](https://pypi.org/project/pytest-archon)
+- [pytest-importson](https://github.com/jwbargsten/pytest-importson)
+- [findimports](https://pypi.org/project/findimports)
+- [pydeps](https://pypi.org/project/pydeps) (based on bytecode, not AST)
+- [modulefinder](https://docs.python.org/3/library/modulefinder.html) (standard library, looks at runtime)
+- [archunitpython](https://pypi.org/project/archunitpython)
+
+## License
+
+Licensed under the Apache License, Version 2.0; see LICENSE.md in the project root directory.

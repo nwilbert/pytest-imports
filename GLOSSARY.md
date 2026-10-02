@@ -118,7 +118,7 @@ use these words less rigorously and can read as if `submodule` and
   `src/` layout the auto-detected source root is `src/` (tests excluded);
   with a flat layout the source root falls back to the directory
   containing `pyproject.toml` (tests included). See the
-  [Configuration](../README.md#configuration) section of the README for
+  [Configuration](README.md#configuration) section of the README for
   the full resolution logic and how to override it.
 - **source root** — A directory configured as a project source path. The
   modules under a source root form the "project" walked by `project()`.
