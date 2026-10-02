@@ -124,4 +124,13 @@ use these words less rigorously and can read as if `submodule` and
   modules under a source root form the "project" walked by `project()`.
   Resolved from `imports_project_paths` in the pytest config, or
   auto-detected (see README's *Configuration* section). Exposed at test
-  time by the `imports_project_paths` fixture.
+  time by the `imports_project_paths` fixture. Usually an import root; if
+  it is a package directory instead, its modules are named from the
+  nearest ancestor import root. A source root inside another one is
+  skipped.
+- **import root** — A directory that would be a `sys.path` entry, such
+  as `src/`: the top-level modules and packages directly inside it are
+  named by their bare names. Python's term for the list of such
+  directories is the
+  [import path](https://docs.python.org/3/glossary.html#term-import-path)
+  (see **dot path** for why we avoid that phrase).

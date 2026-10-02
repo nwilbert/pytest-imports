@@ -347,3 +347,62 @@ def test_syntax_error_is_skipped_with_warning(tmp_path: Path, caplog):
         'broken.py' in record.message and record.levelno == logging.WARNING
         for record in caplog.records
     )
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [
+        {
+            'myapp': {
+                '__init__.py': 'from . import a',
+                'a.py': 'import os',
+                'sub': {'__init__.py': '', 'b.py': 'from .. import a'},
+            },
+            'other.py': '',
+        }
+    ],
+)
+def test_package_as_source_root_is_named_from_its_import_root(project_path, caplog):
+    with caplog.at_level(logging.WARNING):
+        node = build_import_model([project_path / 'myapp'])
+    assert [str(c.dot_path) for c in node.children()] == ['myapp']
+    assert node.get(DotPath('myapp')).imports == [
+        ImportInModule(DotPath('myapp.a'), 1, level=1, is_from_import=True)
+    ]
+    assert node.get(DotPath('myapp.sub.b')).imports == [
+        ImportInModule(DotPath('myapp.a'), 1, level=2, is_from_import=True)
+    ]
+    assert not caplog.records
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [
+        {
+            'myapp': {
+                '__init__.py': '',
+                'a.py': '',
+                'sub': {'__init__.py': '', 'b.py': 'from .. import a'},
+            }
+        }
+    ],
+)
+def test_subpackage_as_source_root_walks_only_that_subpackage(project_path):
+    node = build_import_model([project_path / 'myapp' / 'sub'])
+    assert node.get(DotPath('myapp.sub.b')).imports == [
+        ImportInModule(DotPath('myapp.a'), 1, level=2, is_from_import=True)
+    ]
+    assert node.get(DotPath('myapp.a')) is None
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [{'myapp': {'__init__.py': '', 'a.py': 'import os'}}],
+)
+@pytest.mark.parametrize('nested', ['myapp', '.'])
+def test_nested_source_root_is_skipped(project_path, nested, caplog):
+    with caplog.at_level(logging.WARNING):
+        node = build_import_model([project_path / nested, project_path])
+    assert node.get(DotPath('myapp.a')).imports == [ImportInModule(DotPath('os'), 1)]
+    assert len(caplog.records) == 1
+    assert 'inside source root' in caplog.records[0].message

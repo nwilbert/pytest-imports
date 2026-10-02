@@ -47,7 +47,7 @@ The plugin registers itself via the `pytest11` entry point in `pyproject.toml`, 
 
 **Data flow:**
 1. `plugin.py` — pytest fixtures + `ImportsFixture.check()`. `imports_project_paths` resolves source roots; `imports_root_node` (session-scoped) builds the model once per session; `imports` wraps both.
-2. `parser.py` — `build_import_model()` walks the filesystem with AST analysis to produce a `RootNode`.
+2. `parser.py` — `build_import_model()` walks the filesystem with AST analysis to produce a `RootNode`. Source roots that repeat or nest inside another are dropped (`_outermost_source_roots`); a source root that is a package directory gets its dotted name as a prefix (`_package_prefix`), so module names are always relative to an import root.
 3. `model.py` — `RootNode` / `ModuleNode` (tree), `DotPath` (dot-separated path abstraction, pathlib-like), `ImportInModule` (single import record; `level > 0` means relative import).
 4. `query.py` — frozen dataclass predicates (`MustImport`, `MustNotImport`, `MustNotImportPrivate`, `MustOnlyImport`, `MustAlias`); target abstraction (`Target = str | Descendants | Internal | Stdlib | ThirdParty`) accepted by `must_import` / `must_not_import` / `must_only_import`; `Scope` (hashable dict key); factory functions exported from `__init__.py`; `evaluate_rules()` collects all failures before raising. `MustImport.path` / `MustNotImport.path` / `MustNotImportPrivate.path` are `tuple[Target, ...]` (the factories normalize a single target or list via `_as_target_tuple`; for the private predicate an empty tuple means "no filter"). `MustAlias(path, alias)` takes a single dotted-path string (not a target) plus the required alias.
 

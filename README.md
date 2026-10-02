@@ -244,6 +244,8 @@ This plugin uses a simple heuristic to determine the source root of your project
 
 You can check the resolved source root via the `imports_project_paths` fixture in a test. If the auto-detected scope is not what you want — for example, you have a flat layout but want to exclude tests, or your project uses `src/` but you also want to apply rules to `test/` — set `imports_project_paths` explicitly, or use a narrower scope such as `scope('myapp')` instead of `project()`.
 
+Each entry in `imports_project_paths` should normally be an *import root*: the directory you would put on `sys.path`, such as `src/` or the project directory in a flat layout. You may also point at a package directory (one containing `__init__.py`), e.g. `src/myapp`. Then only that package is analyzed, but its modules keep their full dotted names (`myapp.core`, not `core`), so rules are written the same way; note that imports of sibling packages outside it then count as external rather than `internal()`. A directory *without* `__init__.py` is always treated as an import root — the plugin cannot tell it apart from a [namespace package](https://peps.python.org/pep-0420/) — so don't point at a namespace package directly. Entries that repeat or lie inside another entry are skipped with a warning.
+
 To specify the source root in the pytest configuration, if you use a `pyproject.toml` then this looks like:
 ```
 [tool.pytest.ini_options]
