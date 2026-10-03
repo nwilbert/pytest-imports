@@ -432,8 +432,8 @@ def _is_internal(dot_path: DotPath, root_node: RootNode) -> bool:
 
 
 def _is_stdlib(dot_path: DotPath) -> bool:
-    # Follows the running interpreter's version (e.g. `tomllib` is stdlib
-    # only on 3.11+), but not its platform: the set lists every platform's
+    # Follows the running interpreter's version (e.g. `annotationlib` is
+    # stdlib only on 3.14+), but not its platform: the set lists every platform's
     # modules.
     return dot_path.parts[0] in sys.stdlib_module_names
 

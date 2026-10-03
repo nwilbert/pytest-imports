@@ -238,7 +238,7 @@ Every import falls into exactly one of three classes:
 - **Internal wins.** If your project has its own top-level `logging` package, imports of it match `internal()` only. Relative imports are always internal.
 - **`__future__` is stdlib**, so a stdlib allowlist must name it to permit `from __future__ import annotations`.
 - **Typeshed-only modules** such as `_typeshed` are not in `sys.stdlib_module_names`, so they count as third-party.
-- **Stdlib membership depends on the Python version running pytest**, but not on the platform (`winreg` is stdlib everywhere). For example, `tomllib` is third-party on 3.10, and `distutils` is third-party on 3.12+. For a version-dependent fallback such as `try: import tomllib` / `except ImportError: import tomli`, use an allowlist rather than a ban, so the rule passes on every version: `must_only_import(['tomllib', 'tomli'], among=third_party())`.
+- **Stdlib membership depends on the Python version running pytest**, but not on the platform (`winreg` is stdlib everywhere). For example, `annotationlib` is third-party before 3.14, and `distutils` is third-party on 3.12+. For a version-dependent fallback such as `try: from compression import zstd` / `except ImportError: from backports import zstd`, use an allowlist rather than a ban, so the rule passes on every version: `must_only_import(['compression', 'backports.zstd'], among=third_party())`.
 
 ### Performance
 

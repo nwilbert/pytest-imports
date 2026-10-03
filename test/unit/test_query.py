@@ -470,7 +470,11 @@ def test_third_party_factory():
         ('__future__', stdlib()),
         ('requests', third_party()),
         ('tomli.loads', third_party()),
-        ('tomllib', stdlib() if sys.version_info >= (3, 11) else third_party()),
+        ('tomllib', stdlib()),
+        (
+            'annotationlib',
+            stdlib() if sys.version_info >= (3, 14) else third_party(),
+        ),
     ],
 )
 def test_match_target_stdlib_or_third_party(dot_path, expected):

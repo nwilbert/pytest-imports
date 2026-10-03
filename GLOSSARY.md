@@ -85,7 +85,7 @@ use these words less rigorously and can read as if `submodule` and
   stdlib import or a third-party import.
 - **stdlib import** — An external import whose top-level name is in
   `sys.stdlib_module_names` of the interpreter running pytest (so the
-  set follows the Python version, e.g. `tomllib` from 3.11). Includes
+  set follows the Python version, e.g. `annotationlib` from 3.14). Includes
   private modules such as `_thread`, and `__future__`. Matched by the
   `stdlib()` target.
 - **third-party import** — An external import that is not a stdlib

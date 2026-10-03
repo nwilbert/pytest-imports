@@ -74,14 +74,14 @@ def test_must_alias_is_scoped(pytester):
     result.assert_outcomes(passed=1)
 
 
-def test_tomllib_classification_follows_python_version(pytester):
-    # Runs under the pytest_compat matrix, so both sides of 3.11 are covered.
+def test_annotationlib_classification_follows_python_version(pytester):
+    # Runs under the pytest_compat matrix, so both sides of 3.14 are covered.
     expected, other = (
         ('stdlib', 'third_party')
-        if sys.version_info >= (3, 11)
+        if sys.version_info >= (3, 14)
         else ('third_party', 'stdlib')
     )
-    pytester.makepyfile(config='import tomllib')
+    pytester.makepyfile(config='import annotationlib')
     pytester.makepyfile(f"""
         from pytest_imports import must_import, must_not_import, scope
         from pytest_imports import stdlib, third_party
