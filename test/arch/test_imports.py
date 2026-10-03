@@ -11,24 +11,29 @@ from pytest_imports import (
 
 
 def test_internal_dependencies(imports):
+    # model is the leaf layer; parser and query each build on model only;
+    # plugin wires everything together.
     imports.check(
         {
-            scope('pytest_imports.model'): [
-                must_not_import('pytest_imports.parser'),
-                must_not_import('pytest_imports.query'),
-                must_not_import('pytest_imports.plugin'),
-            ],
+            scope('pytest_imports.model'): must_not_import(internal()),
             scope('pytest_imports.parser'): [
-                must_not_import('pytest_imports.query'),
-                must_not_import('pytest_imports.plugin'),
+                must_import('pytest_imports.model'),
+                must_only_import('pytest_imports.model'),
             ],
-            scope('pytest_imports.query'): [
-                must_not_import('pytest_imports.parser'),
-                must_not_import('pytest_imports.plugin'),
-            ],
-            scope('pytest_imports.plugin'): must_import('pytest_imports.model'),
             scope('pytest_imports.query'): must_import('pytest_imports.model'),
-            scope('pytest_imports.parser'): must_import('pytest_imports.model'),
+            scope('pytest_imports.plugin'): must_import('pytest_imports.model'),
+        }
+    )
+
+
+def test_only_plugin_wires_in_the_parser(imports):
+    # The public API in __init__ re-exports query; only the plugin may
+    # reach the parser (or the plugin module itself).
+    imports.check(
+        {
+            scope('pytest_imports', without='plugin'): must_only_import(
+                ['pytest_imports.model', 'pytest_imports.query']
+            ),
         }
     )
 
