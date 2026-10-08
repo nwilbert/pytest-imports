@@ -783,13 +783,20 @@ def test_imports_are_collected_in_source_order(project_path: Path):
     assert _timings(project_path) == [('a', 'function'), ('b', 'top')]
 
 
-# Fails to parse on every interpreter, with or without lazy syntax support.
-_LAZY_SOURCE_WITH_SYNTAX_ERROR = 'lazy import a\n1invalid_token = 2\n'
+def test_long_elif_chain_does_not_exceed_recursion_limit(tmp_path: Path):
+    # Each `elif` nests one level deeper in the AST.
+    branches = ''.join(f'elif x == {i}:\n    import m{i}\n' for i in range(1, 1000))
+    (tmp_path / 'm.py').write_text(f'if x == 0:\n    pass\n{branches}')
+    assert len(_timings(tmp_path)) == 999
+
+
+# Fails to parse on the lazy import line, with or without lazy syntax support.
+_LAZY_LINE_WITH_SYNTAX_ERROR = b'x = 1\nif x:\n    lazy import a b\n'
 
 
 def test_lazy_syntax_on_old_python_warns(tmp_path: Path, monkeypatch, caplog):
     monkeypatch.setattr('pytest_imports.parser._HAS_LAZY_SYNTAX', False)
-    (tmp_path / 'm.py').write_text(_LAZY_SOURCE_WITH_SYNTAX_ERROR)
+    (tmp_path / 'm.py').write_bytes(_LAZY_LINE_WITH_SYNTAX_ERROR)
     with (
         caplog.at_level(logging.WARNING),
         pytest.warns(UserWarning, match=r'm\.py.*PEP 810.*Python 3\.15'),
@@ -802,15 +809,21 @@ def test_lazy_syntax_on_old_python_warns(tmp_path: Path, monkeypatch, caplog):
 @pytest.mark.parametrize(
     ('has_lazy_syntax', 'source'),
     [
-        (True, _LAZY_SOURCE_WITH_SYNTAX_ERROR),
-        (False, '1invalid_token = 2\n'),
+        pytest.param(True, _LAZY_LINE_WITH_SYNTAX_ERROR, id='python 3.15'),
+        pytest.param(False, b'1invalid_token = 2\n', id='no lazy import'),
+        pytest.param(
+            False,
+            b'"""\n    lazy import json\n"""\n1invalid_token = 2\n',
+            id='lazy import in docstring',
+        ),
+        pytest.param(False, b'lazy import a\0\n', id='error without line'),
     ],
 )
 def test_syntax_error_without_lazy_hint_only_logs(
     tmp_path: Path, monkeypatch, caplog, has_lazy_syntax, source
 ):
     monkeypatch.setattr('pytest_imports.parser._HAS_LAZY_SYNTAX', has_lazy_syntax)
-    (tmp_path / 'm.py').write_text(source)
+    (tmp_path / 'm.py').write_bytes(source)
     with caplog.at_level(logging.WARNING), warnings.catch_warnings():
         warnings.simplefilter('error')
         build_import_model([tmp_path])

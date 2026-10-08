@@ -180,7 +180,9 @@ def test_factory_timing_normalized_to_frozenset(factory):
 
 
 @pytest.mark.parametrize('factory', _TIMING_FACTORIES)
-@pytest.mark.parametrize('timing', [[], 'toplevel', ['top', 'eager']])
+@pytest.mark.parametrize(
+    'timing', [[], 'toplevel', ['top', 'eager'], True, ['top', ['lazy']], ('top',)]
+)
 def test_factory_rejects_invalid_timing(factory, timing):
     with pytest.raises(ValueError, match='timing must be one of'):
         factory(timing=timing)

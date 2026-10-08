@@ -390,8 +390,9 @@ project *can* load `optional`, just maybe not on every machine.
   *all* of that file's imports disappear from the model and rules over
   it pass. Today the skip is only logged, and pytest shows captured
   logs only for failing tests, so in this case nobody would see it.
-  When parsing fails, the interpreter is older than 3.15, and the
-  source contains a line matching `^\s*lazy\s+(import|from)\s`, the
+  When parsing fails, the interpreter is older than 3.15, and the line
+  the SyntaxError points at matches `\s*lazy\s+(import|from)\s` (so a
+  `lazy import` mentioned in a docstring does not trigger it), the
   parser therefore also calls `warnings.warn(...)` (a `UserWarning`)
   saying the file uses PEP 810 lazy imports and pytest must run on
   Python 3.15+ to check it. pytest lists it in the warnings summary of
@@ -486,10 +487,12 @@ names no dotted path, and it does not interact with `MustNotImport`'s
 
 ### `src/pytest_imports/parser.py`
 
-Replace the `ast.walk` loop in `_collect_imports` with a recursive
-descent that carries a context down the tree. `_collect_imports`
-keeps taking an `ast.Module`, so tests can hand it a tree built in
-memory (see [Tests](#tests)). Keep the relative-import resolution
+Replace the `ast.walk` loop in `_collect_imports` with a depth-first
+walk that carries a context down the tree. Use an explicit stack, not
+recursion: each `elif` nests one level deeper in the AST, and a chain
+of a few hundred branches would exceed the recursion limit.
+`_collect_imports` keeps taking an `ast.Module`, so tests can hand it
+a tree built in memory (see [Tests](#tests)). Keep the relative-import resolution
 unchanged, and extract the per-statement conversion so both statement
 kinds share the timing decision.
 
@@ -571,8 +574,8 @@ already computes.
 
 **Import order changes.** `ast.walk` traverses breadth-first, so today a
 module's imports are ordered by nesting depth first: a top-level import
-on line 3 comes before a function-level import on line 2. The recursive
-descent yields them in source order. Failure messages are emitted in
+on line 3 comes before a function-level import on line 2. The new walk
+yields them in source order. Failure messages are emitted in
 import order, so they will now follow line order, which is easier to
 read. Check tests that compare lists of imports or failures for nested
 imports.
@@ -591,7 +594,8 @@ interpreter. The `warnings.warn` call goes outside the
 
 ```python
 _HAS_LAZY_SYNTAX = sys.version_info >= (3, 15)
-_LAZY_IMPORT_LINE = re.compile(rb'^\s*lazy\s+(import|from)\s', re.MULTILINE)
+# Matched against the line the SyntaxError points at.
+_LAZY_IMPORT_LINE = re.compile(rb'\s*lazy\s+(import|from)\s')
 ```
 
 ### `src/pytest_imports/query.py`
@@ -683,10 +687,12 @@ On all interpreters:
 - Source order: a function-level import above a top-level import comes
   first in `imports`.
 - The SyntaxError hint, with `_HAS_LAZY_SYNTAX` monkeypatched to
-  `False`: a file with a `lazy import` line plus an unrelated syntax
-  error (so it fails to parse on every interpreter) emits a
+  `False`: a file whose syntax error is on a `lazy import` line (e.g.
+  `lazy import a b`, which fails on every interpreter) emits a
   `UserWarning` mentioning PEP 810 and Python 3.15
-  (`pytest.warns`). With the flag `True`, the same file only logs.
+  (`pytest.warns`). With the flag `True`, the same file only logs, and
+  so does a file whose error is elsewhere (e.g. a `lazy import` only
+  in a docstring).
 
 Python 3.15+ only (`skipif(sys.version_info < (3, 15))`), as an
 end-to-end check of the in-memory tests above:
@@ -767,7 +773,7 @@ honest by forbidding cycles hidden in function bodies.
 ### `AGENTS.md`
 
 - **Data flow**: mention `ImportInModule.timing` in the `model.py`
-  bullet and the context-carrying recursive descent in the `parser.py`
+  bullet and the context-carrying depth-first walk in the `parser.py`
   bullet. List `timing=` in the `query.py` bullet.
 - **Key internals**: the priority order (function > type_checking >
   lazy > top); `TYPE_CHECKING` recognition is AST-shape based and

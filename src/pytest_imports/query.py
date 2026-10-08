@@ -578,12 +578,14 @@ def _as_timing_set(
 ) -> frozenset[Timing] | None:
     if timing is None:
         return None
-    timings = frozenset([timing] if isinstance(timing, str) else timing)
+    timings = [timing] if isinstance(timing, str) else timing
     # `Literal` is not enforced at runtime; a typo would otherwise match
     # nothing and make every `must_not_import` rule pass.
-    if not timings or not timings.issubset(_TIMINGS):
+    if not (
+        isinstance(timings, list) and timings and all(t in _TIMINGS for t in timings)
+    ):
         raise ValueError(
             f'timing must be one of {", ".join(map(repr, _TIMINGS))},'
             f' or a non-empty list of them; got {timing!r}'
         )
-    return timings
+    return frozenset(timings)

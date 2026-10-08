@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 
 # Module-level so tests can monkeypatch it on any interpreter.
 _HAS_LAZY_SYNTAX = sys.version_info >= (3, 15)
-_LAZY_IMPORT_LINE = re.compile(rb'^\s*lazy\s+(import|from)\s', re.MULTILINE)
+_LAZY_IMPORT_LINE = re.compile(rb'\s*lazy\s+(import|from)\s')
 
 
 def build_import_model(base_paths: Sequence[Path]) -> RootNode:
@@ -33,7 +33,7 @@ def build_import_model(base_paths: Sequence[Path]) -> RootNode:
                     module_ast = ast.parse(module_source, str(module_path))
             except SyntaxError as exc:
                 log.warning(f'Skipping {module_path}: {exc}')
-                if not _HAS_LAZY_SYNTAX and _LAZY_IMPORT_LINE.search(module_source):
+                if not _HAS_LAZY_SYNTAX and _fails_at_lazy_import(module_source, exc):
                     # Logged skips are hidden for passing tests, and every
                     # rule over this file would pass; make it visible.
                     warnings.warn(
@@ -98,6 +98,19 @@ def _package_prefix(base_path: Path) -> DotPath:
     return DotPath(tuple(reversed(names)))
 
 
+def _fails_at_lazy_import(source: bytes, exc: SyntaxError) -> bool:
+    """Return whether the syntax error lies on a PEP 810 lazy import line.
+
+    Checking the error's own line, rather than searching the whole source,
+    avoids blaming lazy imports for a file that only mentions one in a
+    string and fails to parse for another reason.
+    """
+    lines = source.splitlines()
+    if not exc.lineno or exc.lineno > len(lines):
+        return False
+    return _LAZY_IMPORT_LINE.match(lines[exc.lineno - 1]) is not None
+
+
 def _collect_imports(
     module_ast: ast.Module, package_path: DotPath, module_path: Path
 ) -> Sequence[ImportInModule]:
@@ -107,7 +120,7 @@ def _collect_imports(
 class _ImportCollector:
     """Collects the imports of one module in source order, with their timing.
 
-    A recursive descent over the statements carries a `_Context` down the
+    A depth-first walk over the statements carries a `_Context` down the
     tree. Expression subtrees are skipped, since imports are statements.
     """
 
@@ -150,43 +163,44 @@ class _ImportCollector:
             return
         self._lazy_modules = names
 
-    def _visit(self, node: ast.AST, ctx: _Context) -> None:
+    def _visit(self, stmt: ast.stmt, ctx: _Context) -> None:
+        # An explicit stack instead of recursion: each `elif` nests one level
+        # deeper, and long chains would exceed Python's recursion limit.
+        stack: list[tuple[ast.AST, _Context]] = [(stmt, ctx)]
+        while stack:
+            node, node_ctx = stack.pop()
+            # Pushed in reverse, so that imports are collected in source order.
+            stack.extend(reversed(self._process(node, node_ctx)))
+
+    def _process(self, node: ast.AST, ctx: _Context) -> list[tuple[ast.AST, _Context]]:
+        """Collect `node` if it is an import; return its children to visit."""
         match node:
             case ast.Import():
                 self._add_import(node, ctx)
             case ast.ImportFrom():
                 self._add_import_from(node, ctx)
             case ast.FunctionDef() | ast.AsyncFunctionDef():
-                self._visit_children(node, replace(ctx, timing='function'))
+                return _children(node, replace(ctx, timing='function'))
             case ast.ClassDef():
-                self._visit_children(node, replace(ctx, lazy_eligible=False))
+                return _children(node, replace(ctx, lazy_eligible=False))
             case ast.Try() | ast.TryStar():
                 ineligible = replace(ctx, lazy_eligible=False)
-                self._visit_all(node.body, ineligible)
-                self._visit_all(node.handlers, ineligible)
-                self._visit_all(node.orelse, ctx)
-                self._visit_all(node.finalbody, ctx)
+                return [
+                    *_in_context(node.body, ineligible),
+                    *_in_context(node.handlers, ineligible),
+                    *_in_context(node.orelse, ctx),
+                    *_in_context(node.finalbody, ctx),
+                ]
             # Only promotes from 'top': function wins, and nested
             # TYPE_CHECKING blocks keep their timing through the default arm.
             case ast.If() if ctx.timing == 'top' and _is_type_checking(node.test):
-                self._visit_all(node.body, replace(ctx, timing='type_checking'))
-                self._visit_all(node.orelse, ctx)
+                return [
+                    *_in_context(node.body, replace(ctx, timing='type_checking')),
+                    *_in_context(node.orelse, ctx),
+                ]
             case _:
-                self._visit_children(node, ctx)
-
-    def _visit_children(self, node: ast.AST, ctx: _Context) -> None:
-        self._visit_all(
-            (
-                child
-                for child in ast.iter_child_nodes(node)
-                if isinstance(child, (ast.stmt, ast.excepthandler, ast.match_case))
-            ),
-            ctx,
-        )
-
-    def _visit_all(self, nodes: Iterable[ast.AST], ctx: _Context) -> None:
-        for node in nodes:
-            self._visit(node, ctx)
+                return _children(node, ctx)
+        return []
 
     def _add_import(self, node: ast.Import, ctx: _Context) -> None:
         for alias in node.names:
@@ -253,6 +267,23 @@ class _Context:
     # False where CPython ignores `__lazy_modules__`: class bodies, `try`
     # bodies and `except` handlers.
     lazy_eligible: bool = True
+
+
+def _children(node: ast.AST, ctx: _Context) -> list[tuple[ast.AST, _Context]]:
+    return _in_context(
+        (
+            child
+            for child in ast.iter_child_nodes(node)
+            if isinstance(child, (ast.stmt, ast.excepthandler, ast.match_case))
+        ),
+        ctx,
+    )
+
+
+def _in_context(
+    nodes: Iterable[ast.AST], ctx: _Context
+) -> list[tuple[ast.AST, _Context]]:
+    return [(node, ctx) for node in nodes]
 
 
 def _is_type_checking(test: ast.expr) -> bool:
