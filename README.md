@@ -284,7 +284,7 @@ Every import gets exactly one timing. When several rows apply, the first one win
 
 ### Performance
 
-The model is built once per test session, so each test only pays for evaluating its rules, which takes well under a millisecond for most rules. Building the model is linear in the size of the source tree. For reference, the in-repo benchmark against Django 5.2 (~2,800 modules, ~18,000 import statements) builds the model in **~2.7 s** on a modern laptop. Even the most expensive project-wide rule, `must_not_import(internal(), via='absolute')`, which scans every import, takes **~45 ms**. See `benchmark/` and `uv run nox -s benchmark`.
+The model is built once per test session, so each test only pays for evaluating its rules, which takes well under a millisecond for most rules. Building the model is linear in the size of the source tree. For reference, the in-repo benchmark against Django 5.2 (~2,800 modules, ~18,000 import statements) builds the model in **~2.2 s** on a modern laptop. Even the most expensive project-wide rule, `must_not_import(internal(), via='absolute')`, which scans every import, takes **~40 ms**. See `benchmark/` and `uv run nox -s benchmark`.
 
 ### Configuration
 
