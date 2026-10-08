@@ -219,7 +219,7 @@ _TIMING_FILTERS = [
 @pytest.mark.parametrize(('timing', 'expected'), _TIMING_FILTERS)
 def test_walk_imports_timing_filter(imports_root_node, timing, expected):
     m = imports_root_node.get(DotPath('m'))
-    walked = _walk_imports(m, [], None, _as_timing_set(timing))
+    walked = _walk_imports(m, [], timings=_as_timing_set(timing))
     assert {import_by.timing for _, import_by in walked} == expected
 
 
@@ -228,7 +228,7 @@ def test_find_matching_private_imports_timing_filter(imports_root_node):
     m = imports_root_node.get(DotPath('m'))
     matches = list(
         _find_matching_private_imports(
-            m, [], (), frozenset({'lazy', 'function'}), imports_root_node
+            m, [], (), imports_root_node, timings=frozenset({'lazy', 'function'})
         )
     )
     assert [import_by.line_no for _, import_by in matches] == [4, 8]
@@ -258,13 +258,11 @@ def test_must_only_import_timing_ignores_other_timings(imports_root_node):
 )
 def test_find_matching_imports_flat(imports_root_node):
     a = imports_root_node.get(DotPath('a'))
-    assert list(_find_matching_imports(a, [], 'b', None, None, imports_root_node))
-    assert list(_find_matching_imports(a, [], 'b.x', None, None, imports_root_node))
-    assert not list(_find_matching_imports(a, [], 'c', None, None, imports_root_node))
-    assert not list(_find_matching_imports(a, [], 'b.y', None, None, imports_root_node))
-    assert not list(
-        _find_matching_imports(a, [], 'b.x.y', None, None, imports_root_node)
-    )
+    assert list(_find_matching_imports(a, [], 'b', imports_root_node))
+    assert list(_find_matching_imports(a, [], 'b.x', imports_root_node))
+    assert not list(_find_matching_imports(a, [], 'c', imports_root_node))
+    assert not list(_find_matching_imports(a, [], 'b.y', imports_root_node))
+    assert not list(_find_matching_imports(a, [], 'b.x.y', imports_root_node))
 
 
 @pytest.mark.parametrize(
@@ -273,8 +271,8 @@ def test_find_matching_imports_flat(imports_root_node):
 )
 def test_find_matching_imports_nested(imports_root_node):
     d = imports_root_node.get(DotPath('d'))
-    assert list(_find_matching_imports(d, [], 'x', None, None, imports_root_node))
-    assert not list(_find_matching_imports(d, [], 'y', None, None, imports_root_node))
+    assert list(_find_matching_imports(d, [], 'x', imports_root_node))
+    assert not list(_find_matching_imports(d, [], 'y', imports_root_node))
 
 
 @pytest.mark.parametrize(
@@ -283,7 +281,7 @@ def test_find_matching_imports_nested(imports_root_node):
 )
 def test_find_matching_imports_returns_line_numbers(imports_root_node):
     a = imports_root_node.get(DotPath('a'))
-    matches = list(_find_matching_imports(a, [], 'x', None, None, imports_root_node))
+    matches = list(_find_matching_imports(a, [], 'x', imports_root_node))
     assert len(matches) == 2
     assert matches[0][1].line_no == 1
     assert matches[1][1].line_no == 2
@@ -302,7 +300,7 @@ def test_find_matching_imports_returns_line_numbers(imports_root_node):
 )
 def test_find_matching_imports_via(imports_root_node, via, n_matches):
     a = imports_root_node.get(DotPath('p.a'))
-    matches = list(_find_matching_imports(a, [], 'p.x', via, None, imports_root_node))
+    matches = list(_find_matching_imports(a, [], 'p.x', imports_root_node, via=via))
     assert len(matches) == n_matches
 
 
@@ -312,9 +310,7 @@ def test_find_matching_imports_via(imports_root_node, via, n_matches):
 )
 def test_find_matching_imports_exclude(imports_root_node):
     r = imports_root_node.get(DotPath('r'))
-    matches = list(
-        _find_matching_imports(r, [DotPath('b')], 'x', None, None, imports_root_node)
-    )
+    matches = list(_find_matching_imports(r, [DotPath('b')], 'x', imports_root_node))
     assert len(matches) == 1
     assert 'a.py' in str(matches[0][0].file_path)
 
@@ -326,9 +322,7 @@ def test_find_matching_imports_exclude(imports_root_node):
 def test_find_matching_imports_multiple_exclude(imports_root_node):
     r = imports_root_node.get(DotPath('r'))
     matches = list(
-        _find_matching_imports(
-            r, [DotPath('a'), DotPath('b')], 'x', None, None, imports_root_node
-        )
+        _find_matching_imports(r, [DotPath('a'), DotPath('b')], 'x', imports_root_node)
     )
     assert len(matches) == 0
 
@@ -339,9 +333,7 @@ def test_find_matching_imports_multiple_exclude(imports_root_node):
 )
 def test_find_matching_imports_descendants_excludes_target(imports_root_node):
     a = imports_root_node.get(DotPath('a'))
-    matches = list(
-        _find_matching_imports(a, [], descendants('foo'), None, None, imports_root_node)
-    )
+    matches = list(_find_matching_imports(a, [], descendants('foo'), imports_root_node))
     assert len(matches) == 1
     assert matches[0][1].dot_path == DotPath('foo.bar')
 
@@ -355,7 +347,7 @@ def test_find_matching_imports_descendants_does_not_match_target_alone(
 ):
     a = imports_root_node.get(DotPath('a'))
     assert not list(
-        _find_matching_imports(a, [], descendants('foo'), None, None, imports_root_node)
+        _find_matching_imports(a, [], descendants('foo'), imports_root_node)
     )
 
 
@@ -365,9 +357,7 @@ def test_find_matching_imports_descendants_does_not_match_target_alone(
 )
 def test_find_matching_imports_internal_matches_internal_only(imports_root_node):
     a = imports_root_node.get(DotPath('a'))
-    matches = list(
-        _find_matching_imports(a, [], internal(), None, None, imports_root_node)
-    )
+    matches = list(_find_matching_imports(a, [], internal(), imports_root_node))
     assert len(matches) == 1
     assert matches[0][1].dot_path == DotPath('b')
 
@@ -378,9 +368,7 @@ def test_find_matching_imports_internal_matches_internal_only(imports_root_node)
 )
 def test_find_matching_imports_internal_matches_relative(imports_root_node):
     pkg = imports_root_node.get(DotPath('pkg'))
-    matches = list(
-        _find_matching_imports(pkg, [], internal(), None, None, imports_root_node)
-    )
+    matches = list(_find_matching_imports(pkg, [], internal(), imports_root_node))
     assert len(matches) == 1
     assert matches[0][1].dot_path == DotPath('pkg.b')
 
@@ -392,10 +380,10 @@ def test_find_matching_imports_internal_matches_relative(imports_root_node):
 def test_find_matching_imports_internal_absolute_via(imports_root_node):
     pkg = imports_root_node.get(DotPath('pkg'))
     assert list(
-        _find_matching_imports(pkg, [], internal(), 'absolute', None, imports_root_node)
+        _find_matching_imports(pkg, [], internal(), imports_root_node, via='absolute')
     )
     assert not list(
-        _find_matching_imports(pkg, [], internal(), 'relative', None, imports_root_node)
+        _find_matching_imports(pkg, [], internal(), imports_root_node, via='relative')
     )
 
 
@@ -505,7 +493,7 @@ def test_match_target_internal(imports_root_node):
 )
 def test_find_matching_private_imports_matches_private(imports_root_node):
     a = imports_root_node.get(DotPath('a'))
-    assert list(_find_matching_private_imports(a, [], (), None, imports_root_node))
+    assert list(_find_matching_private_imports(a, [], (), imports_root_node))
 
 
 @pytest.mark.parametrize(
@@ -514,7 +502,7 @@ def test_find_matching_private_imports_matches_private(imports_root_node):
 )
 def test_find_matching_private_imports_ignores_public(imports_root_node):
     a = imports_root_node.get(DotPath('a'))
-    assert not list(_find_matching_private_imports(a, [], (), None, imports_root_node))
+    assert not list(_find_matching_private_imports(a, [], (), imports_root_node))
 
 
 @pytest.mark.parametrize(
@@ -523,7 +511,7 @@ def test_find_matching_private_imports_ignores_public(imports_root_node):
 )
 def test_find_matching_private_imports_ignores_future(imports_root_node):
     a = imports_root_node.get(DotPath('a'))
-    assert not list(_find_matching_private_imports(a, [], (), None, imports_root_node))
+    assert not list(_find_matching_private_imports(a, [], (), imports_root_node))
 
 
 @pytest.mark.parametrize(
@@ -533,21 +521,12 @@ def test_find_matching_private_imports_ignores_future(imports_root_node):
 def test_find_matching_private_imports_path_filter(imports_root_node):
     a = imports_root_node.get(DotPath('a'))
     assert (
-        len(
-            list(_find_matching_private_imports(a, [], ('b',), None, imports_root_node))
-        )
-        == 1
+        len(list(_find_matching_private_imports(a, [], ('b',), imports_root_node))) == 1
     )
     assert (
-        len(
-            list(_find_matching_private_imports(a, [], ('c',), None, imports_root_node))
-        )
-        == 1
+        len(list(_find_matching_private_imports(a, [], ('c',), imports_root_node))) == 1
     )
-    assert (
-        len(list(_find_matching_private_imports(a, [], (), None, imports_root_node)))
-        == 2
-    )
+    assert len(list(_find_matching_private_imports(a, [], (), imports_root_node))) == 2
 
 
 @pytest.mark.parametrize(
@@ -556,7 +535,7 @@ def test_find_matching_private_imports_path_filter(imports_root_node):
 )
 def test_find_matching_private_imports_nested(imports_root_node):
     r = imports_root_node.get(DotPath('r'))
-    matches = list(_find_matching_private_imports(r, [], (), None, imports_root_node))
+    matches = list(_find_matching_private_imports(r, [], (), imports_root_node))
     assert len(matches) == 1
     assert 'a.py' in str(matches[0][0].file_path)
 

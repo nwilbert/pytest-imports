@@ -273,9 +273,9 @@ def _evaluate_predicate(
                         node,
                         exclude,
                         target,
-                        predicate.via,
-                        predicate.timing,
                         root_node,
+                        via=predicate.via,
+                        timings=predicate.timing,
                     )
                 ):
                     failures.append(
@@ -296,9 +296,9 @@ def _evaluate_predicate(
                 node,
                 exclude,
                 predicate.path,
-                predicate.via,
-                predicate.timing,
                 root_node,
+                via=predicate.via,
+                timings=predicate.timing,
             ):
                 location = _format_location(module_node, import_by, predicate.timing)
                 matching = f' matching {_format_target(matched)}' if multi else ''
@@ -316,7 +316,7 @@ def _evaluate_predicate(
                 targets = ', '.join(_format_target(t) for t in predicate.path)
                 from_str = f' from {{{targets}}}'
             for module_node, import_by in _find_matching_private_imports(
-                node, exclude, predicate.path, predicate.timing, root_node
+                node, exclude, predicate.path, root_node, timings=predicate.timing
             ):
                 location = _format_location(module_node, import_by, predicate.timing)
                 failures.append(
@@ -335,9 +335,9 @@ def _evaluate_predicate(
                 node,
                 exclude,
                 predicate.among,
-                predicate.via,
-                predicate.timing,
                 root_node,
+                via=predicate.via,
+                timings=predicate.timing,
             ):
                 if any(
                     _match_target(t, import_by.dot_path, root_node)
@@ -364,12 +364,13 @@ def _find_matching_imports(
     base_node: ModuleNode,
     exclude: list[DotPath],
     target: Target,
-    via: Via | None,
-    timings: frozenset[Timing] | None,
     root_node: RootNode,
+    *,
+    via: Via | None = None,
+    timings: frozenset[Timing] | None = None,
 ) -> Iterator[tuple[ModuleNode, ImportInModule]]:
     for module_node, import_by, _ in _find_imports_matching_any(
-        base_node, exclude, (target,), via, timings, root_node
+        base_node, exclude, (target,), root_node, via=via, timings=timings
     ):
         yield module_node, import_by
 
@@ -378,12 +379,15 @@ def _find_imports_matching_any(
     base_node: ModuleNode,
     exclude: list[DotPath],
     targets: tuple[Target, ...],
-    via: Via | None,
-    timings: frozenset[Timing] | None,
     root_node: RootNode,
+    *,
+    via: Via | None = None,
+    timings: frozenset[Timing] | None = None,
 ) -> Iterator[tuple[ModuleNode, ImportInModule, Target]]:
     """Yield each import matching any target, with the first target it matched."""
-    for module_node, import_by in _walk_imports(base_node, exclude, via, timings):
+    for module_node, import_by in _walk_imports(
+        base_node, exclude, via=via, timings=timings
+    ):
         for target in targets:
             if _match_target(target, import_by.dot_path, root_node):
                 yield module_node, import_by, target
@@ -394,10 +398,11 @@ def _find_matching_private_imports(
     base_node: ModuleNode,
     exclude: list[DotPath],
     path: tuple[Target, ...],
-    timings: frozenset[Timing] | None,
     root_node: RootNode,
+    *,
+    timings: frozenset[Timing] | None = None,
 ) -> Iterator[tuple[ModuleNode, ImportInModule]]:
-    for module_node, import_by in _walk_imports(base_node, exclude, None, timings):
+    for module_node, import_by in _walk_imports(base_node, exclude, timings=timings):
         if path and not any(
             _match_target(t, import_by.dot_path, root_node) for t in path
         ):
@@ -418,7 +423,7 @@ def _find_alias_violations(
     see `_is_alias_violation` for the per-import rule.
     """
     target = DotPath(path)
-    for module_node, import_by in _walk_imports(base_node, exclude, None, None):
+    for module_node, import_by in _walk_imports(base_node, exclude):
         if not import_by.dot_path.is_relative_to(target):
             continue
         if _is_alias_violation(import_by, target, alias):
@@ -442,8 +447,9 @@ def _is_alias_violation(import_by: ImportInModule, target: DotPath, alias: str) 
 def _walk_imports(
     base_node: ModuleNode,
     exclude: list[DotPath],
-    via: Via | None,
-    timings: frozenset[Timing] | None,
+    *,
+    via: Via | None = None,
+    timings: frozenset[Timing] | None = None,
 ) -> Iterator[tuple[ModuleNode, ImportInModule]]:
     """Yield each import in scope that passes the `via` and `timings` filters."""
     absolute = _via_to_absolute(via)
