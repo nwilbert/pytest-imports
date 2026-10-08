@@ -300,12 +300,11 @@ def _evaluate_predicate(
                 predicate.timing,
                 root_node,
             ):
-                location = f'{module_node.file_path}:{import_by.line_no}'
+                location = _format_location(module_node, import_by, predicate.timing)
                 matching = f' matching {_format_target(matched)}' if multi else ''
                 failures.append(
                     f'  [scope {scope_label}] must not import {target_str}{timing_str}'
                     f' — found {import_by.dot_path}{matching} in {location}'
-                    f'{_format_actual_timing(predicate.timing, import_by)}'
                 )
         case MustNotImportPrivate():
             timing_str = _format_timings(predicate.timing)
@@ -319,18 +318,19 @@ def _evaluate_predicate(
             for module_node, import_by in _find_matching_private_imports(
                 node, exclude, predicate.path, predicate.timing, root_node
             ):
+                location = _format_location(module_node, import_by, predicate.timing)
                 failures.append(
                     f'  [scope {scope_label}] must not import private names'
-                    f'{from_str}{timing_str}'
-                    f' — found in {module_node.file_path}:{import_by.line_no}'
-                    f'{_format_actual_timing(predicate.timing, import_by)}'
+                    f'{from_str}{timing_str} — found in {location}'
                 )
         case MustOnlyImport():
             timing_str = _format_timings(predicate.timing)
             among_str = _format_target(predicate.among)
-            allowed_str = (
-                '{' + ', '.join(_format_target(t) for t in predicate.allowed) + '}'
-            )
+            if predicate.allowed:
+                allowed_str = ', '.join(_format_target(t) for t in predicate.allowed)
+                rule_str = f'must only import {{{allowed_str}}}'
+            else:
+                rule_str = 'must not import anything'
             for module_node, import_by in _find_matching_imports(
                 node,
                 exclude,
@@ -344,25 +344,16 @@ def _evaluate_predicate(
                     for t in predicate.allowed
                 ):
                     continue
-                location = f'{module_node.file_path}:{import_by.line_no}'
-                actual_timing = _format_actual_timing(predicate.timing, import_by)
-                if predicate.allowed:
-                    failures.append(
-                        f'  [scope {scope_label}] must only import {allowed_str}'
-                        f' among {among_str}{timing_str}'
-                        f' — found {import_by.dot_path} in {location}{actual_timing}'
-                    )
-                else:
-                    failures.append(
-                        f'  [scope {scope_label}] must not import anything'
-                        f' among {among_str}{timing_str}'
-                        f' — found {import_by.dot_path} in {location}{actual_timing}'
-                    )
+                location = _format_location(module_node, import_by, predicate.timing)
+                failures.append(
+                    f'  [scope {scope_label}] {rule_str} among {among_str}{timing_str}'
+                    f' — found {import_by.dot_path} in {location}'
+                )
         case MustAlias():
             for module_node, import_by in _find_alias_violations(
                 node, exclude, predicate.path, predicate.alias
             ):
-                location = f'{module_node.file_path}:{import_by.line_no}'
+                location = _format_location(module_node, import_by, None)
                 failures.append(
                     f'  [scope {scope_label}] must import {predicate.path}'
                     f' only as {predicate.alias} — found in {location}'
@@ -392,17 +383,11 @@ def _find_imports_matching_any(
     root_node: RootNode,
 ) -> Iterator[tuple[ModuleNode, ImportInModule, Target]]:
     """Yield each import matching any target, with the first target it matched."""
-    absolute = _via_to_absolute(via)
-    for module_node in base_node.walk(exclude=exclude):
-        for import_by in module_node.imports:
-            if absolute is not None and absolute == bool(import_by.level):
-                continue
-            if timings is not None and import_by.timing not in timings:
-                continue
-            for target in targets:
-                if _match_target(target, import_by.dot_path, root_node):
-                    yield module_node, import_by, target
-                    break
+    for module_node, import_by in _walk_imports(base_node, exclude, via, timings):
+        for target in targets:
+            if _match_target(target, import_by.dot_path, root_node):
+                yield module_node, import_by, target
+                break
 
 
 def _find_matching_private_imports(
@@ -412,16 +397,13 @@ def _find_matching_private_imports(
     timings: frozenset[Timing] | None,
     root_node: RootNode,
 ) -> Iterator[tuple[ModuleNode, ImportInModule]]:
-    for module_node in base_node.walk(exclude=exclude):
-        for import_by in module_node.imports:
-            if timings is not None and import_by.timing not in timings:
-                continue
-            if path and not any(
-                _match_target(t, import_by.dot_path, root_node) for t in path
-            ):
-                continue
-            if any(_is_private_name(p) for p in import_by.dot_path.parts):
-                yield module_node, import_by
+    for module_node, import_by in _walk_imports(base_node, exclude, None, timings):
+        if path and not any(
+            _match_target(t, import_by.dot_path, root_node) for t in path
+        ):
+            continue
+        if any(_is_private_name(p) for p in import_by.dot_path.parts):
+            yield module_node, import_by
 
 
 def _find_alias_violations(
@@ -436,12 +418,11 @@ def _find_alias_violations(
     see `_is_alias_violation` for the per-import rule.
     """
     target = DotPath(path)
-    for module_node in base_node.walk(exclude=exclude):
-        for import_by in module_node.imports:
-            if not import_by.dot_path.is_relative_to(target):
-                continue
-            if _is_alias_violation(import_by, target, alias):
-                yield module_node, import_by
+    for module_node, import_by in _walk_imports(base_node, exclude, None, None):
+        if not import_by.dot_path.is_relative_to(target):
+            continue
+        if _is_alias_violation(import_by, target, alias):
+            yield module_node, import_by
 
 
 def _is_alias_violation(import_by: ImportInModule, target: DotPath, alias: str) -> bool:
@@ -456,6 +437,23 @@ def _is_alias_violation(import_by: ImportInModule, target: DotPath, alias: str) 
         return import_by.asname != alias
     # A descendant must not steal the canonical alias.
     return import_by.asname == alias
+
+
+def _walk_imports(
+    base_node: ModuleNode,
+    exclude: list[DotPath],
+    via: Via | None,
+    timings: frozenset[Timing] | None,
+) -> Iterator[tuple[ModuleNode, ImportInModule]]:
+    """Yield each import in scope that passes the `via` and `timings` filters."""
+    absolute = _via_to_absolute(via)
+    for module_node in base_node.walk(exclude=exclude):
+        for import_by in module_node.imports:
+            if absolute is not None and absolute == bool(import_by.level):
+                continue
+            if timings is not None and import_by.timing not in timings:
+                continue
+            yield module_node, import_by
 
 
 def _match_target(target: Target, dot_path: DotPath, root_node: RootNode) -> bool:
@@ -517,13 +515,20 @@ def _format_target(target: Target) -> str:
 # All timings, in the order used when joining their labels.
 _TIMINGS: tuple[Timing, ...] = get_args(Timing)
 
-# Per timing: the phrase appended to a rule, and the short label of an
-# import's actual timing.
-_TIMING_LABELS: dict[Timing, tuple[str, str]] = {
-    'top': ('at top level', 'top level'),
-    'lazy': ('as a lazy import', 'lazy'),
-    'function': ('at function level', 'function level'),
-    'type_checking': ('in a TYPE_CHECKING block', 'TYPE_CHECKING block'),
+# The phrase appended to a rule that filters on the timing.
+_TIMING_PHRASES: dict[Timing, str] = {
+    'top': 'at top level',
+    'lazy': 'as a lazy import',
+    'function': 'at function level',
+    'type_checking': 'in a TYPE_CHECKING block',
+}
+
+# The short label of a reported import's actual timing.
+_TIMING_LABELS: dict[Timing, str] = {
+    'top': 'top level',
+    'lazy': 'lazy',
+    'function': 'function level',
+    'type_checking': 'TYPE_CHECKING block',
 }
 
 
@@ -531,16 +536,19 @@ def _format_timings(timings: frozenset[Timing] | None) -> str:
     """Return the rule's timing phrase with a leading space, or `''` if unset."""
     if timings is None:
         return ''
-    return ' ' + ' or '.join(_TIMING_LABELS[t][0] for t in _TIMINGS if t in timings)
+    return ' ' + ' or '.join(_TIMING_PHRASES[t] for t in _TIMINGS if t in timings)
 
 
-def _format_actual_timing(
-    timings: frozenset[Timing] | None, import_by: ImportInModule
+def _format_location(
+    module_node: ModuleNode,
+    import_by: ImportInModule,
+    timings: frozenset[Timing] | None,
 ) -> str:
-    """Return ` (<label>)` for the import's timing if the rule names several."""
+    """Return `path:line`, plus ` (<label>)` if the rule names several timings."""
+    location = f'{module_node.file_path}:{import_by.line_no}'
     if timings is None or len(timings) == 1:
-        return ''
-    return f' ({_TIMING_LABELS[import_by.timing][1]})'
+        return location
+    return f'{location} ({_TIMING_LABELS[import_by.timing]})'
 
 
 def _via_to_absolute(via: Via | None) -> bool | None:

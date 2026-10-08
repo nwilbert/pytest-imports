@@ -166,7 +166,9 @@ class _ImportCollector:
                 self._visit_all(node.handlers, ineligible)
                 self._visit_all(node.orelse, ctx)
                 self._visit_all(node.finalbody, ctx)
-            case ast.If() if ctx.timing != 'function' and _is_type_checking(node.test):
+            # Only promotes from 'top': function wins, and nested
+            # TYPE_CHECKING blocks keep their timing through the default arm.
+            case ast.If() if ctx.timing == 'top' and _is_type_checking(node.test):
                 self._visit_all(node.body, replace(ctx, timing='type_checking'))
                 self._visit_all(node.orelse, ctx)
             case _:

@@ -1,4 +1,3 @@
-import re
 import sys
 
 import pytest
@@ -10,11 +9,13 @@ from pytest_imports.query import (
     MustAlias,
     Stdlib,
     ThirdParty,
+    _as_timing_set,
     _find_alias_violations,
     _find_matching_imports,
     _find_matching_private_imports,
     _format_target,
     _match_target,
+    _walk_imports,
     descendants,
     evaluate_rules,
     internal,
@@ -185,8 +186,8 @@ def test_factory_rejects_invalid_timing(factory, timing):
         factory(timing=timing)
 
 
-# One third-party, private import per timing, keyed by line number.
-_ONE_IMPORT_PER_TIMING = """
+# One third-party, private import per timing (besides the `typing` import).
+_PRIVATE_IMPORT_PER_TIMING = """
     from typing import TYPE_CHECKING
     __lazy_modules__ = ['lazy_mod']
     from top_mod import _p
@@ -196,7 +197,6 @@ _ONE_IMPORT_PER_TIMING = """
     def f():
         from func_mod import _p
 """
-_TIMING_BY_LINE = {3: 'top', 4: 'lazy', 6: 'type_checking', 8: 'function'}
 _MODULE_BY_TIMING = {
     'top': 'top_mod',
     'lazy': 'lazy_mod',
@@ -215,30 +215,26 @@ _TIMING_FILTERS = [
 ]
 
 
-@pytest.mark.parametrize('project_structure', [{'m.py': _ONE_IMPORT_PER_TIMING}])
+@pytest.mark.parametrize('project_structure', [{'m.py': _PRIVATE_IMPORT_PER_TIMING}])
 @pytest.mark.parametrize(('timing', 'expected'), _TIMING_FILTERS)
-@pytest.mark.parametrize(
-    'make_predicate',
-    [
-        pytest.param(
-            lambda t: must_not_import(third_party(), timing=t), id='must_not_import'
-        ),
-        pytest.param(lambda t: must_not_import_private(timing=t), id='private'),
-        pytest.param(
-            lambda t: must_only_import([], among=third_party(), timing=t),
-            id='must_only_import',
-        ),
-    ],
-)
-def test_timing_filter_selects_reported_imports(
-    imports_root_node, make_predicate, timing, expected
-):
-    failures = evaluate_rules(imports_root_node, {scope('m'): make_predicate(timing)})
-    lines = [int(re.search(r'm\.py:(\d+)', f).group(1)) for f in failures]
-    assert sorted(_TIMING_BY_LINE[n] for n in lines) == sorted(expected)
+def test_walk_imports_timing_filter(imports_root_node, timing, expected):
+    m = imports_root_node.get(DotPath('m'))
+    walked = _walk_imports(m, [], None, _as_timing_set(timing))
+    assert {import_by.timing for _, import_by in walked} == expected
 
 
-@pytest.mark.parametrize('project_structure', [{'m.py': _ONE_IMPORT_PER_TIMING}])
+@pytest.mark.parametrize('project_structure', [{'m.py': _PRIVATE_IMPORT_PER_TIMING}])
+def test_find_matching_private_imports_timing_filter(imports_root_node):
+    m = imports_root_node.get(DotPath('m'))
+    matches = list(
+        _find_matching_private_imports(
+            m, [], (), frozenset({'lazy', 'function'}), imports_root_node
+        )
+    )
+    assert [import_by.line_no for _, import_by in matches] == [4, 8]
+
+
+@pytest.mark.parametrize('project_structure', [{'m.py': _PRIVATE_IMPORT_PER_TIMING}])
 @pytest.mark.parametrize(('timing', 'expected'), _TIMING_FILTERS)
 def test_must_import_timing_filter(imports_root_node, timing, expected):
     for import_timing, module in _MODULE_BY_TIMING.items():
@@ -248,7 +244,7 @@ def test_must_import_timing_filter(imports_root_node, timing, expected):
         assert (not failures) == (import_timing in expected)
 
 
-@pytest.mark.parametrize('project_structure', [{'m.py': _ONE_IMPORT_PER_TIMING}])
+@pytest.mark.parametrize('project_structure', [{'m.py': _PRIVATE_IMPORT_PER_TIMING}])
 def test_must_only_import_timing_ignores_other_timings(imports_root_node):
     # Only the top-level import is checked; the others are not allowed but
     # fall outside the checked universe.
