@@ -212,11 +212,11 @@ def test_check_unknown_scope_does_not_abort_remaining_rules(imports):
         }
     ],
 )
-def test_check_via(imports):
-    imports.check({scope('a.b'): must_not_import('a.x', via='absolute')})
-    imports.check({scope('a.d'): must_not_import('x', via='relative')})
+def test_check_style(imports):
+    imports.check({scope('a.b'): must_not_import('a.x', style='absolute')})
+    imports.check({scope('a.d'): must_not_import('x', style='relative')})
     with pytest.raises(AssertionError):
-        imports.check({scope('a.b'): must_not_import('a.x', via='relative')})
+        imports.check({scope('a.b'): must_not_import('a.x', style='relative')})
 
 
 @pytest.mark.parametrize(
@@ -411,10 +411,12 @@ def test_check_must_only_import_mixed_target_types(imports):
     'project_structure',
     [_layered('from myapp.persistence import db')],
 )
-def test_check_must_only_import_via_relative_ignores_absolute(imports):
+def test_check_must_only_import_style_relative_ignores_absolute(imports):
     # Only relative imports are in the universe; the absolute import of
-    # persistence is outside `via='relative'` → no violation.
-    imports.check({scope('myapp.api'): must_only_import('myapp.core', via='relative')})
+    # persistence is outside `style='relative'` → no violation.
+    imports.check(
+        {scope('myapp.api'): must_only_import('myapp.core', style='relative')}
+    )
 
 
 @pytest.mark.parametrize(

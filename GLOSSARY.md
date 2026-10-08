@@ -72,6 +72,9 @@ use these words less rigorously and can read as if `submodule` and
   model, `ImportInModule.level > 0`. See Python reference:
   [Package relative imports](https://docs.python.org/3/reference/import.html#package-relative-imports)
   and [PEP 328](https://peps.python.org/pep-0328/).
+- **style** — Whether an import is an absolute import (`'absolute'`) or
+  a relative import (`'relative'`), derived from `ImportInModule.level`.
+  Filtered with `style=`; without it, both styles match.
 - **alias** — The local name an import is bound to via an `as` clause:
   the `np` in `import numpy as np` or the `z` in `from x import y as z`.
   Recorded as `ImportInModule.asname` (`None` when no `as` clause is

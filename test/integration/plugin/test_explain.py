@@ -210,7 +210,7 @@ def test_explain_must_not_import_internal_fail(pytester):
 
         def test_arch(imports):
             imports.check({
-                project(): must_not_import(internal(), via='absolute'),
+                project(): must_not_import(internal(), style='absolute'),
             })
     """)
     result = pytester.runpytest()

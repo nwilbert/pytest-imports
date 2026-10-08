@@ -37,7 +37,7 @@ Rules include descendants on both sides: an import of `bar.x` anywhere in `foo` 
 | [`internal()`](#example-internal) | target | Match any import resolving inside the source roots. |
 | [`stdlib()`](#example-stdlib) | target | Match any non-internal import of a standard library module. |
 | [`third_party()`](#example-stdlib) | target | Match any import that is neither internal nor stdlib. |
-| [`via='absolute'` / `via='relative'`](#example-via) | option | Restrict a predicate to one import style. |
+| [`style='absolute'` / `style='relative'`](#example-style) | option | Restrict a predicate to one import style. |
 | [`timing='top'` / `'lazy'` / `'function'` / `'type_checking'`](#example-timing) | option | Restrict a predicate to imports that execute at that time; a list matches any of them. |
 
 A *target* is either a dotted-path string or one of the target helpers above.
@@ -73,16 +73,16 @@ def test_multiple_rules_per_scope(imports):
 - A list of targets in `must_import` is conjunctive: every target must be imported somewhere in scope.
 - A list of *predicates* applies several rules to one scope. All failures are reported together.
 
-<a id="example-via"></a>
+<a id="example-style"></a>
 ### Absolute vs. relative imports
 
 ```python
 def test_no_relative_imports_in_public_api(imports):
     imports.check({
-        scope('myapp.api'): must_not_import('myapp', via='relative'),
+        scope('myapp.api'): must_not_import('myapp', style='relative'),
     })
 ```
-`via='absolute'` or `via='relative'` restricts a rule to that import style; without `via`, both match.
+`style='absolute'` or `style='relative'` restricts a rule to that import style; without `style`, both match.
 
 <a id="example-timing"></a>
 ### Import timing
@@ -131,10 +131,10 @@ from pytest_imports import internal, must_not_import, project
 
 def test_internal_imports_are_relative(imports):
     imports.check({
-        project(): must_not_import(internal(), via='absolute'),
+        project(): must_not_import(internal(), style='absolute'),
     })
 ```
-`internal()` matches every import that resolves to a module under the configured source roots. With `via='absolute'`, this rule requires all internal imports to be relative: `from .aaa import ...` rather than `from myapp.core.aaa import ...`, including across packages (e.g. `myapp.other` imported from `myapp.core.bbb`).
+`internal()` matches every import that resolves to a module under the configured source roots. With `style='absolute'`, this rule requires all internal imports to be relative: `from .aaa import ...` rather than `from myapp.core.aaa import ...`, including across packages (e.g. `myapp.other` imported from `myapp.core.bbb`).
 
 This is the opposite of ruff's [TID252 (relative-imports)](https://docs.astral.sh/ruff/rules/relative-imports/#relative-imports-tid252), which bans relative imports in favor of absolute ones.
 
@@ -284,7 +284,7 @@ Every import gets exactly one timing. When several rows apply, the first one win
 
 ### Performance
 
-The model is built once per test session, so each test only pays for evaluating its rules, which takes well under a millisecond for most rules. Building the model is linear in the size of the source tree. For reference, the in-repo benchmark against Django 5.2 (~2,800 modules, ~18,000 import statements) builds the model in **~2.2 s** on a modern laptop. Even the most expensive project-wide rule, `must_not_import(internal(), via='absolute')`, which scans every import, takes **~40 ms**. See `benchmark/` and `uv run nox -s benchmark`.
+The model is built once per test session, so each test only pays for evaluating its rules, which takes well under a millisecond for most rules. Building the model is linear in the size of the source tree. For reference, the in-repo benchmark against Django 5.2 (~2,800 modules, ~18,000 import statements) builds the model in **~2.2 s** on a modern laptop. Even the most expensive project-wide rule, `must_not_import(internal(), style='absolute')`, which scans every import, takes **~40 ms**. See `benchmark/` and `uv run nox -s benchmark`.
 
 ### Configuration
 

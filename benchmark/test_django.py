@@ -155,9 +155,9 @@ def test_stress_project_must_not_import_private(imports):
 def test_stress_project_internal_absolute(imports):
     """`internal()` target walks every import prefix against the module tree."""
     _report(
-        "project() must_not_import(internal(), via='absolute')",
+        "project() must_not_import(internal(), style='absolute')",
         imports,
-        {project(): must_not_import(internal(), via='absolute')},
+        {project(): must_not_import(internal(), style='absolute')},
     )
 
 

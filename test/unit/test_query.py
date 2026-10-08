@@ -60,7 +60,7 @@ def test_project_hashable():
 def test_must_import_defaults():
     p = must_import('foo.bar')
     assert p.path == ('foo.bar',)
-    assert p.via is None
+    assert p.style is None
 
 
 def test_must_import_list_of_targets():
@@ -68,15 +68,15 @@ def test_must_import_list_of_targets():
     assert p.path == ('a', 'b')
 
 
-def test_must_import_via():
-    assert must_import('foo', via='absolute').via == 'absolute'
-    assert must_import('foo', via='relative').via == 'relative'
+def test_must_import_style():
+    assert must_import('foo', style='absolute').style == 'absolute'
+    assert must_import('foo', style='relative').style == 'relative'
 
 
 def test_must_not_import_defaults():
     p = must_not_import('foo.bar')
     assert p.path == ('foo.bar',)
-    assert p.via is None
+    assert p.style is None
 
 
 def test_must_not_import_list_of_targets():
@@ -108,7 +108,7 @@ def test_must_only_import_single_target_normalized():
     p = must_only_import('foo.core')
     assert p.allowed == ('foo.core',)
     assert p.among == Internal()
-    assert p.via is None
+    assert p.style is None
 
 
 def test_must_only_import_list_of_targets():
@@ -121,10 +121,10 @@ def test_must_only_import_accepts_structured_targets():
     assert p.allowed == (Descendants(path='foo.core'),)
 
 
-def test_must_only_import_among_and_via():
-    p = must_only_import('foo.core', among=descendants('foo'), via='relative')
+def test_must_only_import_among_and_style():
+    p = must_only_import('foo.core', among=descendants('foo'), style='relative')
     assert p.among == Descendants(path='foo')
-    assert p.via == 'relative'
+    assert p.style == 'relative'
 
 
 def test_descendants_factory():
@@ -157,9 +157,9 @@ def test_must_import_accepts_descendants():
 
 
 def test_must_not_import_accepts_internal():
-    p = must_not_import(internal(), via='absolute')
+    p = must_not_import(internal(), style='absolute')
     assert p.path == (Internal(),)
-    assert p.via == 'absolute'
+    assert p.style == 'absolute'
 
 
 _TIMING_FACTORIES = [
@@ -290,7 +290,7 @@ def test_find_matching_imports_returns_line_numbers(imports_root_node):
 
 
 @pytest.mark.parametrize(
-    ('project_structure', 'via', 'n_matches'),
+    ('project_structure', 'style', 'n_matches'),
     [
         ({'p': {'a.py': 'import p.x'}}, 'absolute', 1),
         ({'p': {'a.py': 'from . import x'}}, 'absolute', 0),
@@ -300,9 +300,9 @@ def test_find_matching_imports_returns_line_numbers(imports_root_node):
         ({'p': {'a.py': 'from . import x'}}, None, 1),
     ],
 )
-def test_find_matching_imports_via(imports_root_node, via, n_matches):
+def test_find_matching_imports_style(imports_root_node, style, n_matches):
     a = imports_root_node.get(DotPath('p.a'))
-    matches = list(_find_matching_imports(a, [], 'p.x', imports_root_node, via=via))
+    matches = list(_find_matching_imports(a, [], 'p.x', imports_root_node, style=style))
     assert len(matches) == n_matches
 
 
@@ -379,13 +379,13 @@ def test_find_matching_imports_internal_matches_relative(imports_root_node):
     'project_structure',
     [{'pkg': {'a.py': 'from pkg import b', 'b.py': ''}}],
 )
-def test_find_matching_imports_internal_absolute_via(imports_root_node):
+def test_find_matching_imports_internal_absolute_style(imports_root_node):
     pkg = imports_root_node.get(DotPath('pkg'))
     assert list(
-        _find_matching_imports(pkg, [], internal(), imports_root_node, via='absolute')
+        _find_matching_imports(pkg, [], internal(), imports_root_node, style='absolute')
     )
     assert not list(
-        _find_matching_imports(pkg, [], internal(), imports_root_node, via='relative')
+        _find_matching_imports(pkg, [], internal(), imports_root_node, style='relative')
     )
 
 

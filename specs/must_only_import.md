@@ -81,7 +81,7 @@ def must_only_import(
     allowed: Target | list[Target],
     *,
     among: Target = Internal(),
-    via: Via | None = None,
+    style: Style | None = None,
 ) -> MustOnlyImport: ...
 ```
 
@@ -92,7 +92,7 @@ Predicate dataclass:
 class MustOnlyImport:
     allowed: tuple[Target, ...]
     among: Target = Internal()
-    via: Via | None = None
+    style: Style | None = None
 ```
 
 Added to the `Predicate` union in `query.py`.
@@ -117,7 +117,7 @@ For each module in scope and each of its imports:
 
 1. If the import's `dot_path` does not match `among` (per the existing
    `_match_target` logic), skip it — it is outside the universe.
-2. If the import does not satisfy `via` (when `via` is set), skip it.
+2. If the import does not satisfy `style` (when `style` is set), skip it.
 3. If the import's `dot_path` matches **any** entry in `allowed`, it is
    permitted.
 4. Otherwise, it is a violation.
@@ -134,7 +134,7 @@ Each violating import line produces one failure (mirrors
 #### Examples
 
 Given `must_only_import(['myapp.core', 'myapp.schemas'])` (defaults:
-`among=internal()`, `via=None`), applied to `myapp.api.routes`:
+`among=internal()`, `style=None`), applied to `myapp.api.routes`:
 
 | Import statement                       | Result    | Reason                                  |
 | -------------------------------------- | --------- | --------------------------------------- |
@@ -220,7 +220,7 @@ and joining with `, ` inside braces.
           '{' + ', '.join(_format_target(t) for t in predicate.allowed) + '}'
       )
       for module_node, import_by in _find_matching_imports(
-          node, exclude, predicate.among, predicate.via, root_node
+          node, exclude, predicate.among, predicate.style, root_node
       ):
           if any(
               _match_target(t, import_by.dot_path, root_node)
@@ -243,7 +243,7 @@ and joining with `, ` inside braces.
   ```
 
   Note this reuses `_find_matching_imports` to filter by `among` and
-  `via`, then applies the allowlist check inline. No new helper is
+  `style`, then applies the allowlist check inline. No new helper is
   needed — the existing iterator already does the universe walk.
 
 #### `src/pytest_imports/__init__.py`
@@ -270,7 +270,7 @@ Export `must_only_import` and add to `__all__`.
   import any `myapp.capture.*` (listed via `descendants('myapp.capture')`
   in `allowed`) but is flagged for `from myapp.persistence import x`.
   Stdlib and third-party imports inside the same scope are not flagged.
-- `via='relative'`: the rule only flags relative imports that fall
+- `style='relative'`: the rule only flags relative imports that fall
   outside the allowlist; absolute imports are ignored.
 - Empty `allowed`: every internal import in scope produces a failure;
   external imports do not.
@@ -354,11 +354,11 @@ uniform.
 
 ```python
 def must_import(
-    path: Target | list[Target], *, via: Via | None = None
+    path: Target | list[Target], *, style: Style | None = None
 ) -> MustImport: ...
 
 def must_not_import(
-    path: Target | list[Target], *, via: Via | None = None
+    path: Target | list[Target], *, style: Style | None = None
 ) -> MustNotImport: ...
 
 def must_not_import_private(
@@ -376,12 +376,12 @@ Dataclass fields become tuples:
 @dataclass(frozen=True)
 class MustImport:
     path: tuple[Target, ...]
-    via: Via | None = None
+    style: Style | None = None
 
 @dataclass(frozen=True)
 class MustNotImport:
     path: tuple[Target, ...]
-    via: Via | None = None
+    style: Style | None = None
 
 @dataclass(frozen=True)
 class MustNotImportPrivate:

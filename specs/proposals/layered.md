@@ -258,7 +258,7 @@ introduce a distinct vocabulary (e.g. *tier*, *band*).
   `__init__.py` metadata, by file count). Rejected. Layering is an
   editorial decision; deriving it from a directory listing makes the
   rule depend on accidental naming.
-- **Per-layer `via=`** or **per-layer extra allowlist entries**. Out of
+- **Per-layer `style=`** or **per-layer extra allowlist entries**. Out of
   scope. If one layer needs special treatment, dict-merge a manual
   `must_only_import` over the helper's output — the literal entry
   wins on key collision.

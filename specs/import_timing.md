@@ -96,9 +96,11 @@ The earlier draft named the parameter `at=`, a preposition like `via=`,
 
 `timing=` reads well with every value (`timing='lazy'`,
 `timing=['lazy', 'function']`) and uses the glossary term directly. It
-gives up the preposition pattern, which matters less here: `via`,
-`among` and `without` describe import style and scope, while this
-option selects a property of the import itself. The failure messages
+gives up the preposition pattern, which matters less here: `among`
+and `without` describe scope, while this option selects a property of
+the import itself. `via=` was later renamed `style=` on the same
+reasoning: it selects the import style, and `via` would read as an
+indirect import ("A imports B via C"). The failure messages
 keep their own English phrases ("at top level", "as a lazy import").
 
 Rejected alternatives:
@@ -213,14 +215,14 @@ Timing = Literal['top', 'lazy', 'function', 'type_checking']
 def must_import(
     path: Target | list[Target],
     *,
-    via: Via | None = None,
+    style: Style | None = None,
     timing: Timing | list[Timing] | None = None,
 ) -> MustImport: ...
 
 def must_not_import(
     path: Target | list[Target],
     *,
-    via: Via | None = None,
+    style: Style | None = None,
     timing: Timing | list[Timing] | None = None,
 ) -> MustNotImport: ...
 
@@ -234,7 +236,7 @@ def must_only_import(
     allowed: Target | list[Target],
     *,
     among: Target = INTERNAL,
-    via: Via | None = None,
+    style: Style | None = None,
     timing: Timing | list[Timing] | None = None,
 ) -> MustOnlyImport: ...
 ```
@@ -425,7 +427,7 @@ nothing and make every `must_not_import` rule pass.
 ### Per-predicate behavior
 
 - **`MustImport`**: for each target, satisfied iff some import in scope
-  matches the target, `via` and `timing`. Still one failure per
+  matches the target, `style` and `timing`. Still one failure per
   unsatisfied target, at scope level.
 - **`MustNotImport`**: imports with a timing outside the `timing` filter
   are ignored. Each remaining import matching any target is one
@@ -433,7 +435,7 @@ nothing and make every `must_not_import` rule pass.
 - **`MustNotImportPrivate`**: imports with a timing outside the `timing`
   filter are ignored.
 - **`MustOnlyImport`**: `timing` narrows the checked universe the same
-  way `among` and `via` do: only imports matching `among`, `via` and
+  way `among` and `style` do: only imports matching `among`, `style` and
   `timing` are checked against `allowed`.
 
 ### Failure messages
@@ -618,7 +620,7 @@ _LAZY_IMPORT_LINE = re.compile(rb'\s*lazy\s+(import|from)\s')
   ```
 
 - Thread the predicate's `timing` set through `_find_imports_matching_any`
-  (and so `_find_matching_imports`) next to `via`, and through
+  (and so `_find_matching_imports`) next to `style`, and through
   `_find_matching_private_imports`. Inside these helpers, name the
   parameter `timings`, so it does not read like `import_by.timing`:
 
@@ -760,7 +762,7 @@ honest by forbidding cycles hidden in function bodies.
 
 ### `README.md`
 
-- **Building blocks**: add a `timing=` row next to `via=`.
+- **Building blocks**: add a `timing=` row next to `style=`.
 - **Examples**: a new "Import timing" section after "Absolute vs.
   relative imports", showing `must_not_import(..., timing='top')` for a
   deferred heavy dependency and `must_not_import(internal(),

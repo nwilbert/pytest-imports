@@ -74,22 +74,22 @@ def third_party() -> ThirdParty:
 def must_import(
     path: Target | list[Target],
     *,
-    via: Via | None = None,
+    style: Style | None = None,
     timing: Timing | list[Timing] | None = None,
 ) -> MustImport:
     return MustImport(
-        path=_as_target_tuple(path), via=via, timing=_as_timing_set(timing)
+        path=_as_target_tuple(path), style=style, timing=_as_timing_set(timing)
     )
 
 
 def must_not_import(
     path: Target | list[Target],
     *,
-    via: Via | None = None,
+    style: Style | None = None,
     timing: Timing | list[Timing] | None = None,
 ) -> MustNotImport:
     return MustNotImport(
-        path=_as_target_tuple(path), via=via, timing=_as_timing_set(timing)
+        path=_as_target_tuple(path), style=style, timing=_as_timing_set(timing)
     )
 
 
@@ -108,7 +108,7 @@ def must_only_import(
     allowed: Target | list[Target],
     *,
     among: Target = INTERNAL,
-    via: Via | None = None,
+    style: Style | None = None,
     timing: Timing | list[Timing] | None = None,
 ) -> MustOnlyImport:
     # `among` is the bounded universe the allowlist is checked against;
@@ -116,7 +116,7 @@ def must_only_import(
     return MustOnlyImport(
         allowed=_as_target_tuple(allowed),
         among=among,
-        via=via,
+        style=style,
         timing=_as_timing_set(timing),
     )
 
@@ -159,7 +159,7 @@ def evaluate_rules(
     return failures
 
 
-Via = Literal['absolute', 'relative']
+Style = Literal['absolute', 'relative']
 
 
 @dataclass(frozen=True)
@@ -185,7 +185,7 @@ class MustImport:
     """
 
     path: tuple[Target, ...]
-    via: Via | None = None
+    style: Style | None = None
     timing: frozenset[Timing] | None = None
 
 
@@ -199,7 +199,7 @@ class MustNotImport:
     """
 
     path: tuple[Target, ...]
-    via: Via | None = None
+    style: Style | None = None
     timing: frozenset[Timing] | None = None
 
 
@@ -230,7 +230,7 @@ class MustOnlyImport:
 
     allowed: tuple[Target, ...]
     among: Target = INTERNAL
-    via: Via | None = None
+    style: Style | None = None
     timing: frozenset[Timing] | None = None
 
 
@@ -274,7 +274,7 @@ def _evaluate_predicate(
                         exclude,
                         target,
                         root_node,
-                        via=predicate.via,
+                        style=predicate.style,
                         timings=predicate.timing,
                     )
                 ):
@@ -297,7 +297,7 @@ def _evaluate_predicate(
                 exclude,
                 predicate.path,
                 root_node,
-                via=predicate.via,
+                style=predicate.style,
                 timings=predicate.timing,
             ):
                 location = _format_location(module_node, import_by, predicate.timing)
@@ -336,7 +336,7 @@ def _evaluate_predicate(
                 exclude,
                 predicate.among,
                 root_node,
-                via=predicate.via,
+                style=predicate.style,
                 timings=predicate.timing,
             ):
                 if any(
@@ -366,11 +366,11 @@ def _find_matching_imports(
     target: Target,
     root_node: RootNode,
     *,
-    via: Via | None = None,
+    style: Style | None = None,
     timings: frozenset[Timing] | None = None,
 ) -> Iterator[tuple[ModuleNode, ImportInModule]]:
     for module_node, import_by, _ in _find_imports_matching_any(
-        base_node, exclude, (target,), root_node, via=via, timings=timings
+        base_node, exclude, (target,), root_node, style=style, timings=timings
     ):
         yield module_node, import_by
 
@@ -381,12 +381,12 @@ def _find_imports_matching_any(
     targets: tuple[Target, ...],
     root_node: RootNode,
     *,
-    via: Via | None = None,
+    style: Style | None = None,
     timings: frozenset[Timing] | None = None,
 ) -> Iterator[tuple[ModuleNode, ImportInModule, Target]]:
     """Yield each import matching any target, with the first target it matched."""
     for module_node, import_by in _walk_imports(
-        base_node, exclude, via=via, timings=timings
+        base_node, exclude, style=style, timings=timings
     ):
         for target in targets:
             if _match_target(target, import_by.dot_path, root_node):
@@ -448,11 +448,11 @@ def _walk_imports(
     base_node: ModuleNode,
     exclude: list[DotPath],
     *,
-    via: Via | None = None,
+    style: Style | None = None,
     timings: frozenset[Timing] | None = None,
 ) -> Iterator[tuple[ModuleNode, ImportInModule]]:
-    """Yield each import in scope that passes the `via` and `timings` filters."""
-    absolute = _via_to_absolute(via)
+    """Yield each import in scope that passes the `style` and `timings` filters."""
+    absolute = _style_to_absolute(style)
     for module_node in base_node.walk(exclude=exclude):
         for import_by in module_node.imports:
             if absolute is not None and absolute == bool(import_by.level):
@@ -557,10 +557,10 @@ def _format_location(
     return f'{location} ({_TIMING_LABELS[import_by.timing]})'
 
 
-def _via_to_absolute(via: Via | None) -> bool | None:
-    if via == 'absolute':
+def _style_to_absolute(style: Style | None) -> bool | None:
+    if style == 'absolute':
         return True
-    if via == 'relative':
+    if style == 'relative':
         return False
     return None
 

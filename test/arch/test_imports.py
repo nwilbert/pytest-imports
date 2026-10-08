@@ -52,7 +52,7 @@ def test_query_only_imports_model(imports):
 def test_all_internal_imports_must_be_relative(imports):
     imports.check(
         {
-            project(): must_not_import(internal(), via='absolute'),
+            project(): must_not_import(internal(), style='absolute'),
         }
     )
 
