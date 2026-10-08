@@ -38,6 +38,7 @@ Rules include descendants on both sides: an import of `bar.x` anywhere in `foo` 
 | [`stdlib()`](#example-stdlib) | target | Match any non-internal import of a standard library module. |
 | [`third_party()`](#example-stdlib) | target | Match any import that is neither internal nor stdlib. |
 | [`via='absolute'` / `via='relative'`](#example-via) | option | Restrict a predicate to one import style. |
+| [`timing='top'` / `'lazy'` / `'function'` / `'type_checking'`](#example-timing) | option | Restrict a predicate to imports that execute at that time; a list matches any of them. |
 
 A *target* is either a dotted-path string or one of the target helpers above.
 
@@ -82,6 +83,29 @@ def test_no_relative_imports_in_public_api(imports):
     })
 ```
 `via='absolute'` or `via='relative'` restricts a rule to that import style; without `via`, both match.
+
+<a id="example-timing"></a>
+### Import timing
+
+```python
+from pytest_imports import internal, must_not_import, project, scope
+
+def test_cli_defers_heavy_dependencies(imports):
+    imports.check({
+        # Loading the CLI must not load these; lazy and function-level imports are fine.
+        scope('myapp.cli'): must_not_import(['pandas', 'tensorflow'], timing='top'),
+        # Cycles must be fixed, not hidden in function bodies.
+        project(): must_not_import(internal(), timing='function'),
+    })
+```
+`timing=` restricts a rule to imports that execute at a given time:
+
+- `'top'`: while the module is loaded (module level, class bodies, `try`, `if`, …).
+- `'lazy'`: on first use of the bound name, per [PEP 810](https://peps.python.org/pep-0810/) (`lazy import pandas`, or a module listed in `__lazy_modules__`).
+- `'function'`: inside a function body, when the function runs.
+- `'type_checking'`: inside `if TYPE_CHECKING:`, never at runtime.
+
+A list matches any of them, e.g. `timing=['lazy', 'function']` for deferred imports. Without `timing`, every import matches. See [Import timing](#timing-details) for the exact rules.
 
 <a id="example-descendants"></a>
 ### Encapsulating a package's internals
@@ -239,6 +263,24 @@ Every import falls into exactly one of three classes:
 - **`__future__` is stdlib**, so a stdlib allowlist must name it to permit `from __future__ import annotations`.
 - **Typeshed-only modules** such as `_typeshed` are not in `sys.stdlib_module_names`, so they count as third-party.
 - **Stdlib membership depends on the Python version running pytest**, but not on the platform (`winreg` is stdlib everywhere). For example, `annotationlib` is third-party before 3.14, and `distutils` is third-party on 3.12+. For a version-dependent fallback such as `try: from compression import zstd` / `except ImportError: from backports import zstd`, use an allowlist rather than a ban, so the rule passes on every version: `must_only_import(['compression', 'backports.zstd'], among=third_party())`.
+
+<a id="timing-details"></a>
+### Import timing
+
+Every import gets exactly one timing. When several rows apply, the first one wins:
+
+| Timing | The import statement is … | Executes |
+| --- | --- | --- |
+| `'function'` | inside a `def` or `async def` body, at any depth | when the function runs |
+| `'type_checking'` | inside the body of an `if TYPE_CHECKING:` block, not inside a function | never at runtime |
+| `'lazy'` | marked `lazy`, or covered by `__lazy_modules__` (see below) | on first use of the bound name |
+| `'top'` | anywhere else: module level, class body, `try`/`except`, `if`, `with`, `match`, … | when the module is loaded |
+
+- **`TYPE_CHECKING` is recognized by shape**: `if TYPE_CHECKING:` and `if <anything>.TYPE_CHECKING:`. An alias (`if TC:`), a negation (`if not TYPE_CHECKING:`) or a compound condition is not recognized, and neither is the `else:` branch; those imports keep the surrounding timing.
+- **`__lazy_modules__`** is recognized only as an assignment in the module body itself, whose value is a list, tuple or set literal of strings. It applies to the imports after it, as in Python 3.15, whose rules it follows: a plain import is lazy if the module it names (`a.b` for `import a.b`, the resolved `from` module for `from ... import ...`) is listed, unless it is a star import or sits in a class body, a `try` body or an `except` handler. Other assignments (`+=`, a non-literal value) are ignored with a warning; mutations and assignments nested in a block are ignored silently. Such imports count as `'top'`.
+- **Lazy imports are classified from the source**, not by the Python version running pytest: an import covered by `__lazy_modules__` is `'lazy'` even on Python 3.11. Process-wide switches such as `-X lazy_imports=all` are runtime configuration and are not considered.
+- **`lazy` syntax needs Python 3.15 to parse.** On older versions, a file using it fails to parse and is skipped, so rules over it would pass silently. The plugin then emits a `UserWarning`; run pytest on Python 3.15+ to check such files.
+- `must_alias` does not take `timing=`; the alias rule is the same wherever the import runs.
 
 ### Performance
 

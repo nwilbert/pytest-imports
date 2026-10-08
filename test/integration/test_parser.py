@@ -1,4 +1,6 @@
 import logging
+import sys
+import warnings
 from inspect import cleandoc
 from pathlib import Path
 
@@ -406,3 +408,456 @@ def test_nested_source_root_is_skipped(project_path, nested, caplog):
     assert node.get(DotPath('myapp.a')).imports == [ImportInModule(DotPath('os'), 1)]
     assert len(caplog.records) == 1
     assert 'inside source root' in caplog.records[0].message
+
+
+def _timings(project_path: Path, module: str = 'm') -> list[tuple[str, str]]:
+    node = build_import_model([project_path]).get(DotPath(module))
+    return [(str(i.dot_path), i.timing) for i in node.imports]
+
+
+@pytest.mark.parametrize(
+    ('project_structure', 'expected'),
+    [
+        pytest.param({'m.py': 'import a'}, [('a', 'top')], id='module level'),
+        pytest.param(
+            {
+                'm.py': """
+                    try:
+                        import a
+                    except ImportError:
+                        import b
+                """
+            },
+            [('a', 'top'), ('b', 'top')],
+            id='try/except',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    class C:
+                        import a
+                """
+            },
+            [('a', 'top')],
+            id='class body',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    if x:
+                        import a
+                    with y:
+                        import b
+                    match z:
+                        case 1:
+                            import c
+                """
+            },
+            [('a', 'top'), ('b', 'top'), ('c', 'top')],
+            id='if/with/match',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    if TYPE_CHECKING:
+                        import a
+                    if typing.TYPE_CHECKING:
+                        import b
+                    if t.TYPE_CHECKING:
+                        import c
+                """
+            },
+            [('a', 'type_checking'), ('b', 'type_checking'), ('c', 'type_checking')],
+            id='TYPE_CHECKING name and attribute',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    if TYPE_CHECKING:
+                        import a
+                    else:
+                        import b
+                """
+            },
+            [('a', 'type_checking'), ('b', 'top')],
+            id='TYPE_CHECKING else',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    if TYPE_CHECKING:
+                        if TYPE_CHECKING:
+                            import a
+                        if x:
+                            import b
+                        else:
+                            import c
+                """
+            },
+            [('a', 'type_checking'), ('b', 'type_checking'), ('c', 'type_checking')],
+            id='nested in TYPE_CHECKING',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    if TC:
+                        import a
+                    if not TYPE_CHECKING:
+                        import b
+                    if TYPE_CHECKING and x:
+                        import c
+                """
+            },
+            [('a', 'top'), ('b', 'top'), ('c', 'top')],
+            id='unrecognized TYPE_CHECKING',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    def f():
+                        import a
+                    async def g():
+                        import b
+                    class C:
+                        def method(self):
+                            import c
+                    def outer():
+                        def inner():
+                            try:
+                                import d
+                            except ImportError:
+                                pass
+                """
+            },
+            [
+                ('a', 'function'),
+                ('b', 'function'),
+                ('c', 'function'),
+                ('d', 'function'),
+            ],
+            id='function level',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    if TYPE_CHECKING:
+                        def f():
+                            import a
+                    def g():
+                        if TYPE_CHECKING:
+                            import b
+                """
+            },
+            [('a', 'function'), ('b', 'function')],
+            id='function wins over TYPE_CHECKING',
+        ),
+    ],
+)
+def test_timing(project_path: Path, expected):
+    assert _timings(project_path) == expected
+
+
+@pytest.mark.parametrize(
+    ('project_structure', 'expected'),
+    [
+        pytest.param(
+            {
+                'm.py': """
+                    __lazy_modules__ = ['a', 'b']
+                    import a
+                    from b import x
+                    import c
+                """
+            },
+            [('a', 'lazy'), ('b.x', 'lazy'), ('c', 'top')],
+            id='list',
+        ),
+        pytest.param(
+            {'m.py': "__lazy_modules__ = ('a',)\nimport a"},
+            [('a', 'lazy')],
+            id='tuple',
+        ),
+        pytest.param(
+            {'m.py': "__lazy_modules__ = {'a'}\nimport a"},
+            [('a', 'lazy')],
+            id='set',
+        ),
+        pytest.param(
+            {'m.py': "__lazy_modules__: list[str] = ['a']\nimport a"},
+            [('a', 'lazy')],
+            id='annotated assignment',
+        ),
+        pytest.param(
+            {'m.py': '__lazy_modules__: list[str]\nimport a'},
+            [('a', 'top')],
+            id='annotation without value',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    __lazy_modules__ = ['a']
+                    import a as b
+                    from a import x as y
+                """
+            },
+            [('a', 'lazy'), ('a.x', 'lazy')],
+            id='aliased',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    __lazy_modules__ = ['pkg']
+                    from pkg import sub
+                    import pkg.sub
+                """
+            },
+            [('pkg.sub', 'lazy'), ('pkg.sub', 'top')],
+            id='statement module',
+        ),
+        pytest.param(
+            {'m.py': "__lazy_modules__ = ['pkg.sub']\nimport pkg.sub, other"},
+            [('pkg.sub', 'lazy'), ('other', 'top')],
+            id='decided per alias',
+        ),
+        pytest.param(
+            {'m.py': "__lazy_modules__ = ['a']\nfrom a import *"},
+            [('a.*', 'top')],
+            id='star import',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    __lazy_modules__ = ['a', 'b', 'c', 'd', 'e']
+                    if x:
+                        import a
+                    with y:
+                        import b
+                    match z:
+                        case 1:
+                            import c
+                    for i in range(1):
+                        import d
+                    while False:
+                        import e
+                """
+            },
+            [('a', 'lazy'), ('b', 'lazy'), ('c', 'lazy'), ('d', 'lazy'), ('e', 'lazy')],
+            id='module-level blocks',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    __lazy_modules__ = ['a', 'b', 'c', 'd']
+                    try:
+                        import a
+                    except ImportError:
+                        import b
+                    else:
+                        import c
+                    finally:
+                        import d
+                """
+            },
+            [('a', 'top'), ('b', 'top'), ('c', 'lazy'), ('d', 'lazy')],
+            id='try',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    __lazy_modules__ = ['a', 'b']
+                    try:
+                        import a
+                    except* ImportError:
+                        import b
+                """
+            },
+            [('a', 'top'), ('b', 'top')],
+            id='try/except*',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    __lazy_modules__ = ['a']
+                    class C:
+                        import a
+                """
+            },
+            [('a', 'top')],
+            id='class body',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    import a
+                    __lazy_modules__ = ['a']
+                    import a
+                """
+            },
+            [('a', 'top'), ('a', 'lazy')],
+            id='before the assignment',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    __lazy_modules__ = ['a']
+                    import a
+                    __lazy_modules__ = ['b']
+                    import a
+                    import b
+                """
+            },
+            [('a', 'lazy'), ('a', 'top'), ('b', 'lazy')],
+            id='reassignment replaces the set',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    __lazy_modules__ = ['a', 'b']
+                    if TYPE_CHECKING:
+                        import a
+                    def f():
+                        import b
+                """
+            },
+            [('a', 'type_checking'), ('b', 'function')],
+            id='TYPE_CHECKING and function win',
+        ),
+        pytest.param(
+            {
+                'm.py': """
+                    if x:
+                        __lazy_modules__ = ['a']
+                    import a
+                """
+            },
+            [('a', 'top')],
+            id='nested assignment not followed',
+        ),
+    ],
+)
+def test_lazy_modules_timing(project_path: Path, expected, caplog):
+    with caplog.at_level(logging.WARNING):
+        assert _timings(project_path) == expected
+    assert not caplog.records
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [
+        {
+            'rp': {
+                '__init__.py': '',
+                'm.py': """
+                    __lazy_modules__ = ['rp.x']
+                    from .x import v
+                    from . import x
+                """,
+            }
+        }
+    ],
+)
+def test_lazy_modules_matches_resolved_relative_import(project_path: Path):
+    assert _timings(project_path, 'rp.m') == [('rp.x.v', 'lazy'), ('rp.x', 'top')]
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [
+        {
+            'm.py': """
+                __lazy_modules__ = ['a']
+                __lazy_modules__ = frozenset({'b'})
+                __lazy_modules__ += ['b']
+                __lazy_modules__ = 'b'
+                __lazy_modules__ = ['b', 1]
+                import a
+                import b
+            """
+        }
+    ],
+)
+def test_unrecognized_lazy_modules_assignment_is_ignored(project_path: Path, caplog):
+    with caplog.at_level(logging.WARNING):
+        assert _timings(project_path) == [('a', 'lazy'), ('b', 'top')]
+    assert len(caplog.records) == 4
+    for line_no, record in enumerate(caplog.records, start=2):
+        assert 'Ignoring __lazy_modules__ assignment in ' in record.message
+        assert f'line {line_no}:' in record.message
+
+
+@pytest.mark.parametrize(
+    'project_structure',
+    [
+        {
+            'm.py': """
+                def f():
+                    import a
+                import b
+            """
+        }
+    ],
+)
+def test_imports_are_collected_in_source_order(project_path: Path):
+    assert _timings(project_path) == [('a', 'function'), ('b', 'top')]
+
+
+# Fails to parse on every interpreter, with or without lazy syntax support.
+_LAZY_SOURCE_WITH_SYNTAX_ERROR = 'lazy import a\n1invalid_token = 2\n'
+
+
+def test_lazy_syntax_on_old_python_warns(tmp_path: Path, monkeypatch, caplog):
+    monkeypatch.setattr('pytest_imports.parser._HAS_LAZY_SYNTAX', False)
+    (tmp_path / 'm.py').write_text(_LAZY_SOURCE_WITH_SYNTAX_ERROR)
+    with (
+        caplog.at_level(logging.WARNING),
+        pytest.warns(UserWarning, match=r'm\.py.*PEP 810.*Python 3\.15'),
+    ):
+        node = build_import_model([tmp_path])
+    assert node.get(DotPath('m')) is None
+    assert len(caplog.records) == 1
+
+
+@pytest.mark.parametrize(
+    ('has_lazy_syntax', 'source'),
+    [
+        (True, _LAZY_SOURCE_WITH_SYNTAX_ERROR),
+        (False, '1invalid_token = 2\n'),
+    ],
+)
+def test_syntax_error_without_lazy_hint_only_logs(
+    tmp_path: Path, monkeypatch, caplog, has_lazy_syntax, source
+):
+    monkeypatch.setattr('pytest_imports.parser._HAS_LAZY_SYNTAX', has_lazy_syntax)
+    (tmp_path / 'm.py').write_text(source)
+    with caplog.at_level(logging.WARNING), warnings.catch_warnings():
+        warnings.simplefilter('error')
+        build_import_model([tmp_path])
+    assert len(caplog.records) == 1
+
+
+@pytest.mark.skipif(sys.version_info < (3, 15), reason='lazy syntax needs 3.15+')
+@pytest.mark.parametrize(
+    'project_structure',
+    [
+        {
+            'm.py': """
+                lazy import a
+                lazy from b import c
+                if x:
+                    lazy import d
+                with y:
+                    lazy import e
+                if TYPE_CHECKING:
+                    lazy import f
+            """
+        }
+    ],
+)
+def test_lazy_keyword_timing(project_path: Path):
+    assert _timings(project_path) == [
+        ('a', 'lazy'),
+        ('b.c', 'lazy'),
+        ('d', 'lazy'),
+        ('e', 'lazy'),
+        ('f', 'type_checking'),
+    ]

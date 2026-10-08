@@ -94,6 +94,36 @@ use these words less rigorously and can read as if `submodule` and
   disjoint and together cover every import.
 - **private name** — Any dotted-path part beginning with `_` (single or
   double underscore), with the sole exception of `__future__`.
+- **timing** — When an import executes. One of `'top'`, `'lazy'`,
+  `'function'`, `'type_checking'`; recorded as `ImportInModule.timing`
+  and filtered with `timing=`. Every import has exactly one timing; when
+  several apply, function-level beats type-checking beats lazy beats
+  top-level.
+- **top-level import** — An import executed while its module is loaded:
+  at module level, in a class body, or in a `try`/`except`, `if`, `with`
+  etc. at module level, and neither lazy nor inside a recognized
+  `if TYPE_CHECKING:` block. The `'top'` timing. Lazy imports also sit
+  at module level but are not top-level imports in this sense.
+- **lazy import** — An import declared lazy per
+  [PEP 810](https://peps.python.org/pep-0810/), either with the `lazy`
+  keyword or through `__lazy_modules__`, and executed on first use of
+  the bound name. The `'lazy'` timing. **Only** use "lazy import" in
+  this sense, never for function-level imports.
+- **eager import** — PEP 810's term for any import that is not lazy,
+  including function-level ones. Do not use it as a name for the
+  `'top'` timing.
+- **function-level import** — An import inside a `def` or `async def`
+  body, at any depth. The `'function'` timing.
+- **type-checking import** — An import inside the body of a recognized
+  `if TYPE_CHECKING:` block, outside any function. Never executed at
+  runtime. The `'type_checking'` timing.
+- **deferred import** — A lazy or function-level import, i.e.
+  `timing=['lazy', 'function']`.
+- **statement module** — The module an import statement names: the full
+  dotted name for `import a.b`, the resolved absolute `from` module for
+  `from ... import ...`. Matched against `__lazy_modules__`. For
+  from-imports it differs from `ImportInModule.dot_path`, which also
+  includes the imported name.
 
 ## Rule vocabulary
 

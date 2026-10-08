@@ -3,9 +3,9 @@ from __future__ import annotations
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, get_args
 
-from .model import DotPath, ImportInModule, ModuleNode, RootNode
+from .model import DotPath, ImportInModule, ModuleNode, RootNode, Timing
 
 
 @dataclass(frozen=True)
@@ -71,20 +71,37 @@ def third_party() -> ThirdParty:
     return ThirdParty()
 
 
-def must_import(path: Target | list[Target], *, via: Via | None = None) -> MustImport:
-    return MustImport(path=_as_target_tuple(path), via=via)
+def must_import(
+    path: Target | list[Target],
+    *,
+    via: Via | None = None,
+    timing: Timing | list[Timing] | None = None,
+) -> MustImport:
+    return MustImport(
+        path=_as_target_tuple(path), via=via, timing=_as_timing_set(timing)
+    )
 
 
 def must_not_import(
-    path: Target | list[Target], *, via: Via | None = None
+    path: Target | list[Target],
+    *,
+    via: Via | None = None,
+    timing: Timing | list[Timing] | None = None,
 ) -> MustNotImport:
-    return MustNotImport(path=_as_target_tuple(path), via=via)
+    return MustNotImport(
+        path=_as_target_tuple(path), via=via, timing=_as_timing_set(timing)
+    )
 
 
 def must_not_import_private(
     path: Target | list[Target] | None = None,
+    *,
+    timing: Timing | list[Timing] | None = None,
 ) -> MustNotImportPrivate:
-    return MustNotImportPrivate(path=() if path is None else _as_target_tuple(path))
+    return MustNotImportPrivate(
+        path=() if path is None else _as_target_tuple(path),
+        timing=_as_timing_set(timing),
+    )
 
 
 def must_only_import(
@@ -92,10 +109,16 @@ def must_only_import(
     *,
     among: Target = INTERNAL,
     via: Via | None = None,
+    timing: Timing | list[Timing] | None = None,
 ) -> MustOnlyImport:
     # `among` is the bounded universe the allowlist is checked against;
     # it defaults to all internal imports.
-    return MustOnlyImport(allowed=_as_target_tuple(allowed), among=among, via=via)
+    return MustOnlyImport(
+        allowed=_as_target_tuple(allowed),
+        among=among,
+        via=via,
+        timing=_as_timing_set(timing),
+    )
 
 
 def must_alias(path: str, alias: str) -> MustAlias:
@@ -157,11 +180,13 @@ class MustImport:
     """Predicate asserting that a scope must contain the given imports.
 
     Multiple targets are conjunctive: each must be matched by some
-    import in scope.
+    import in scope. `timing` restricts which imports count (`None`
+    means every timing).
     """
 
     path: tuple[Target, ...]
     via: Via | None = None
+    timing: frozenset[Timing] | None = None
 
 
 @dataclass(frozen=True)
@@ -169,11 +194,13 @@ class MustNotImport:
     """Predicate asserting that a scope must not contain the given imports.
 
     Multiple targets are disjunctive: an import matching any of them is
-    a violation.
+    a violation. Imports with a timing outside `timing` are ignored
+    (`None` means every timing).
     """
 
     path: tuple[Target, ...]
     via: Via | None = None
+    timing: frozenset[Timing] | None = None
 
 
 @dataclass(frozen=True)
@@ -182,10 +209,12 @@ class MustNotImportPrivate:
 
     `path` is an optional filter: an empty tuple flags every private
     import, otherwise only private imports matching at least one target
-    are flagged.
+    are flagged. Imports with a timing outside `timing` are ignored
+    (`None` means every timing).
     """
 
     path: tuple[Target, ...] = ()
+    timing: frozenset[Timing] | None = None
 
 
 @dataclass(frozen=True)
@@ -194,13 +223,15 @@ class MustOnlyImport:
 
     Among the imports matching `among` (the bounded universe, internal
     modules by default), every one must match at least one entry in
-    `allowed`; any other is a violation. Imports outside `among` are
+    `allowed`; any other is a violation. Imports outside `among`, or
+    with a timing outside `timing` (`None` means every timing), are
     ignored.
     """
 
     allowed: tuple[Target, ...]
     among: Target = INTERNAL
     via: Via | None = None
+    timing: frozenset[Timing] | None = None
 
 
 @dataclass(frozen=True)
@@ -234,18 +265,25 @@ def _evaluate_predicate(
 ) -> None:
     match predicate:
         case MustImport():
+            timing_str = _format_timings(predicate.timing)
             # Conjunctive: every target must be matched by some import.
             for target in predicate.path:
                 if not any(
                     _find_matching_imports(
-                        node, exclude, target, predicate.via, root_node
+                        node,
+                        exclude,
+                        target,
+                        predicate.via,
+                        predicate.timing,
+                        root_node,
                     )
                 ):
                     failures.append(
                         f'  [scope {scope_label}] must import {_format_target(target)}'
-                        f' — no matching import found'
+                        f'{timing_str} — no matching import found'
                     )
         case MustNotImport():
+            timing_str = _format_timings(predicate.timing)
             # Disjunctive: an import matching any target is a violation.
             multi = len(predicate.path) != 1
             if multi:
@@ -255,15 +293,22 @@ def _evaluate_predicate(
             else:
                 target_str = _format_target(predicate.path[0])
             for module_node, import_by, matched in _find_imports_matching_any(
-                node, exclude, predicate.path, predicate.via, root_node
+                node,
+                exclude,
+                predicate.path,
+                predicate.via,
+                predicate.timing,
+                root_node,
             ):
                 location = f'{module_node.file_path}:{import_by.line_no}'
                 matching = f' matching {_format_target(matched)}' if multi else ''
                 failures.append(
-                    f'  [scope {scope_label}] must not import {target_str}'
+                    f'  [scope {scope_label}] must not import {target_str}{timing_str}'
                     f' — found {import_by.dot_path}{matching} in {location}'
+                    f'{_format_actual_timing(predicate.timing, import_by)}'
                 )
         case MustNotImportPrivate():
+            timing_str = _format_timings(predicate.timing)
             if not predicate.path:
                 from_str = ''
             elif len(predicate.path) == 1:
@@ -272,20 +317,27 @@ def _evaluate_predicate(
                 targets = ', '.join(_format_target(t) for t in predicate.path)
                 from_str = f' from {{{targets}}}'
             for module_node, import_by in _find_matching_private_imports(
-                node, exclude, predicate.path, root_node
+                node, exclude, predicate.path, predicate.timing, root_node
             ):
                 failures.append(
                     f'  [scope {scope_label}] must not import private names'
-                    f'{from_str}'
+                    f'{from_str}{timing_str}'
                     f' — found in {module_node.file_path}:{import_by.line_no}'
+                    f'{_format_actual_timing(predicate.timing, import_by)}'
                 )
         case MustOnlyImport():
+            timing_str = _format_timings(predicate.timing)
             among_str = _format_target(predicate.among)
             allowed_str = (
                 '{' + ', '.join(_format_target(t) for t in predicate.allowed) + '}'
             )
             for module_node, import_by in _find_matching_imports(
-                node, exclude, predicate.among, predicate.via, root_node
+                node,
+                exclude,
+                predicate.among,
+                predicate.via,
+                predicate.timing,
+                root_node,
             ):
                 if any(
                     _match_target(t, import_by.dot_path, root_node)
@@ -293,17 +345,18 @@ def _evaluate_predicate(
                 ):
                     continue
                 location = f'{module_node.file_path}:{import_by.line_no}'
+                actual_timing = _format_actual_timing(predicate.timing, import_by)
                 if predicate.allowed:
                     failures.append(
                         f'  [scope {scope_label}] must only import {allowed_str}'
-                        f' among {among_str} — found {import_by.dot_path}'
-                        f' in {location}'
+                        f' among {among_str}{timing_str}'
+                        f' — found {import_by.dot_path} in {location}{actual_timing}'
                     )
                 else:
                     failures.append(
                         f'  [scope {scope_label}] must not import anything'
-                        f' among {among_str} — found {import_by.dot_path}'
-                        f' in {location}'
+                        f' among {among_str}{timing_str}'
+                        f' — found {import_by.dot_path} in {location}{actual_timing}'
                     )
         case MustAlias():
             for module_node, import_by in _find_alias_violations(
@@ -321,10 +374,11 @@ def _find_matching_imports(
     exclude: list[DotPath],
     target: Target,
     via: Via | None,
+    timings: frozenset[Timing] | None,
     root_node: RootNode,
 ) -> Iterator[tuple[ModuleNode, ImportInModule]]:
     for module_node, import_by, _ in _find_imports_matching_any(
-        base_node, exclude, (target,), via, root_node
+        base_node, exclude, (target,), via, timings, root_node
     ):
         yield module_node, import_by
 
@@ -334,6 +388,7 @@ def _find_imports_matching_any(
     exclude: list[DotPath],
     targets: tuple[Target, ...],
     via: Via | None,
+    timings: frozenset[Timing] | None,
     root_node: RootNode,
 ) -> Iterator[tuple[ModuleNode, ImportInModule, Target]]:
     """Yield each import matching any target, with the first target it matched."""
@@ -341,6 +396,8 @@ def _find_imports_matching_any(
     for module_node in base_node.walk(exclude=exclude):
         for import_by in module_node.imports:
             if absolute is not None and absolute == bool(import_by.level):
+                continue
+            if timings is not None and import_by.timing not in timings:
                 continue
             for target in targets:
                 if _match_target(target, import_by.dot_path, root_node):
@@ -352,10 +409,13 @@ def _find_matching_private_imports(
     base_node: ModuleNode,
     exclude: list[DotPath],
     path: tuple[Target, ...],
+    timings: frozenset[Timing] | None,
     root_node: RootNode,
 ) -> Iterator[tuple[ModuleNode, ImportInModule]]:
     for module_node in base_node.walk(exclude=exclude):
         for import_by in module_node.imports:
+            if timings is not None and import_by.timing not in timings:
+                continue
             if path and not any(
                 _match_target(t, import_by.dot_path, root_node) for t in path
             ):
@@ -454,6 +514,35 @@ def _format_target(target: Target) -> str:
             return 'any third-party module'
 
 
+# All timings, in the order used when joining their labels.
+_TIMINGS: tuple[Timing, ...] = get_args(Timing)
+
+# Per timing: the phrase appended to a rule, and the short label of an
+# import's actual timing.
+_TIMING_LABELS: dict[Timing, tuple[str, str]] = {
+    'top': ('at top level', 'top level'),
+    'lazy': ('as a lazy import', 'lazy'),
+    'function': ('at function level', 'function level'),
+    'type_checking': ('in a TYPE_CHECKING block', 'TYPE_CHECKING block'),
+}
+
+
+def _format_timings(timings: frozenset[Timing] | None) -> str:
+    """Return the rule's timing phrase with a leading space, or `''` if unset."""
+    if timings is None:
+        return ''
+    return ' ' + ' or '.join(_TIMING_LABELS[t][0] for t in _TIMINGS if t in timings)
+
+
+def _format_actual_timing(
+    timings: frozenset[Timing] | None, import_by: ImportInModule
+) -> str:
+    """Return ` (<label>)` for the import's timing if the rule names several."""
+    if timings is None or len(timings) == 1:
+        return ''
+    return f' ({_TIMING_LABELS[import_by.timing][1]})'
+
+
 def _via_to_absolute(via: Via | None) -> bool | None:
     if via == 'absolute':
         return True
@@ -468,3 +557,19 @@ def _is_private_name(name: str) -> bool:
 
 def _as_target_tuple(path: Target | list[Target]) -> tuple[Target, ...]:
     return tuple(path) if isinstance(path, list) else (path,)
+
+
+def _as_timing_set(
+    timing: Timing | list[Timing] | None,
+) -> frozenset[Timing] | None:
+    if timing is None:
+        return None
+    timings = frozenset([timing] if isinstance(timing, str) else timing)
+    # `Literal` is not enforced at runtime; a typo would otherwise match
+    # nothing and make every `must_not_import` rule pass.
+    if not timings or not timings.issubset(_TIMINGS):
+        raise ValueError(
+            f'timing must be one of {", ".join(map(repr, _TIMINGS))},'
+            f' or a non-empty list of them; got {timing!r}'
+        )
+    return timings

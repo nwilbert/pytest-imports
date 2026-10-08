@@ -549,3 +549,110 @@ def test_check_must_only_import_among_stdlib(imports):
     )
     assert len(failures) == 1
     assert 'among any stdlib module — found socket' in failures[0]
+
+
+_ONE_IMPORT_PER_TIMING = """
+    from typing import TYPE_CHECKING
+    __lazy_modules__ = ['lazy_mod']
+    import pandas
+    from lazy_mod import _p
+    if TYPE_CHECKING:
+        import numpy
+    def f():
+        import requests
+"""
+
+
+@pytest.mark.parametrize('project_structure', [{'m.py': _ONE_IMPORT_PER_TIMING}])
+@pytest.mark.parametrize(
+    ('rule', 'expected'),
+    [
+        pytest.param(
+            must_import('requests', timing='top'),
+            ['must import requests at top level — no matching import found'],
+            id='must_import single timing',
+        ),
+        pytest.param(
+            must_import('requests', timing=['type_checking', 'top']),
+            [
+                'must import requests at top level or in a TYPE_CHECKING block'
+                ' — no matching import found'
+            ],
+            id='must_import several timings',
+        ),
+        pytest.param(
+            must_not_import('pandas', timing='top'),
+            ['must not import pandas at top level — found pandas in m.py:3'],
+            id='must_not_import single timing',
+        ),
+        pytest.param(
+            must_not_import(['pandas', 'requests'], timing=['function', 'top']),
+            [
+                'must not import {pandas, requests} at top level or at function level'
+                ' — found pandas matching pandas in m.py:3 (top level)',
+                'must not import {pandas, requests} at top level or at function level'
+                ' — found requests matching requests in m.py:8 (function level)',
+            ],
+            id='must_not_import several targets and timings',
+        ),
+        pytest.param(
+            must_not_import(
+                third_party(), timing=['type_checking', 'function', 'lazy']
+            ),
+            [
+                'must not import any third-party module as a lazy import or at'
+                ' function level or in a TYPE_CHECKING block'
+                f' — found {found}'
+                for found in [
+                    'lazy_mod._p in m.py:4 (lazy)',
+                    'numpy in m.py:6 (TYPE_CHECKING block)',
+                    'requests in m.py:8 (function level)',
+                ]
+            ],
+            id='must_not_import several timings',
+        ),
+        pytest.param(
+            must_not_import_private(timing='lazy'),
+            ['must not import private names as a lazy import — found in m.py:4'],
+            id='private single timing',
+        ),
+        pytest.param(
+            must_not_import_private('lazy_mod', timing=['top', 'lazy']),
+            [
+                'must not import private names from lazy_mod at top level or as a'
+                ' lazy import — found in m.py:4 (lazy)'
+            ],
+            id='private several timings',
+        ),
+        pytest.param(
+            must_only_import('pandas', among=third_party(), timing=['top', 'function']),
+            [
+                'must only import {pandas} among any third-party module at top level'
+                ' or at function level — found requests in m.py:8 (function level)'
+            ],
+            id='must_only_import several timings',
+        ),
+        pytest.param(
+            must_only_import([], among=third_party(), timing='lazy'),
+            [
+                'must not import anything among any third-party module as a lazy'
+                ' import — found lazy_mod._p in m.py:4'
+            ],
+            id='must_only_import empty allowlist single timing',
+        ),
+        pytest.param(
+            must_not_import('pandas'),
+            ['must not import pandas — found pandas in m.py:3'],
+            id='must_not_import no timing',
+        ),
+        pytest.param(
+            must_not_import_private(),
+            ['must not import private names — found in m.py:4'],
+            id='private no timing',
+        ),
+    ],
+)
+def test_timing_failure_messages(imports, rule, expected):
+    assert imports.violations({scope('m'): rule}) == [
+        f'  [scope m] {message}' for message in expected
+    ]

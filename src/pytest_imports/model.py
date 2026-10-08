@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePath
+from typing import Literal
+
+Timing = Literal['top', 'lazy', 'function', 'type_checking']
 
 
 class RootNode:
@@ -159,6 +162,11 @@ class ImportInModule:
     absent). `is_from_import` distinguishes `from a import b`
     (`is_from_import=True`) from `import a.b` (`is_from_import=False`),
     which otherwise both yield `dot_path=a.b, level=0`.
+
+    `timing` records when the import executes: `'top'` while the module
+    is loaded, `'lazy'` on first use of the bound name (PEP 810),
+    `'function'` when the enclosing function runs, and `'type_checking'`
+    never at runtime (inside `if TYPE_CHECKING:`).
     """
 
     dot_path: DotPath
@@ -166,6 +174,7 @@ class ImportInModule:
     level: int = 0
     asname: str | None = None
     is_from_import: bool = False
+    timing: Timing = 'top'
 
 
 class DotPath:

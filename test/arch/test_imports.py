@@ -57,6 +57,15 @@ def test_all_internal_imports_must_be_relative(imports):
     )
 
 
+def test_no_function_level_internal_imports(imports):
+    # Cycles must be fixed by restructuring, not hidden in function bodies.
+    imports.check(
+        {
+            project(): must_not_import(internal(), timing='function'),
+        }
+    )
+
+
 def test_external_dependencies(imports):
     imports.check(
         {

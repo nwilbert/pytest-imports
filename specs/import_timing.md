@@ -155,7 +155,7 @@ timing literals.
 ### No `external()` target
 
 An earlier draft of this spec also proposed `external()`. The
-[stdlib/third-party spec](../stdlib_third_party.md) has since declined
+[stdlib/third-party spec](stdlib_third_party.md) has since declined
 it: `[stdlib(), third_party()]` covers it wherever targets combine
 disjunctively. This spec's examples use `third_party()` instead.
 
@@ -834,7 +834,7 @@ Add under **Imports**:
 - **Nested-function granularity** (a function-level import in a
   module-level function vs. a closure inside a method). Both are
   `'function'`.
-- **Ruff compilation**: if the [ruff_compile](ruff_compile.md) proposal
+- **Ruff compilation**: if the [ruff_compile](proposals/ruff_compile.md) proposal
   is implemented, it should skip rules with `timing=` at first. Ruff's
   `banned-module-level-imports` (TID253) may be able to express part of
   `timing='top'`; that needs investigating.

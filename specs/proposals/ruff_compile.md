@@ -133,6 +133,7 @@ reported per rule in `skipped` when a rule cannot be compiled at all.
 | `must_not_import(internal())` | one `banned-api` entry per top-level module under the source roots | Exact today; closed-world. |
 | `must_not_import(internal(), via='relative')` | `ban-relative-imports = "all"` | Exact. |
 | `must_not_import(..., via='absolute')` and any other `via` combination | — | **Skipped.** TID251 resolves relative imports to qualified names, so it cannot distinguish the two forms. |
+| Any rule with `timing=` | — | **Skipped.** TID251 flags an import wherever it executes. TID253 (`banned-module-level-imports`) may express part of `timing='top'`; see the [import timing spec](../import_timing.md). |
 | `must_only_import(allowed, among=U)` | `banned-api` entries for the maximal subtrees of `U` not covered by `allowed` | Exact today; closed-world. Walk the model from the root of `U`; ban a node when neither it nor any descendant is allowed, otherwise recurse. **Skipped** when any `allowed` entry is a `descendants(...)` target, because TID251 cannot allow `p`'s children while banning `p` itself. |
 | `must_not_import_private()` | `extend-select = ["PLC2701"]`, `preview = true` | Approximate. PLC2701 exempts imports within the same top-level package; ours does not. Under-approximates, so acceptable. |
 | `must_not_import_private(path=...)` | — | **Skipped.** PLC2701 takes no target filter. |
